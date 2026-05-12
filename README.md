@@ -10,6 +10,15 @@
 
 DRIVEPAL is an open-source ride-booking platform in one repository: a NestJS API, Angular web UI, and Flutter customer/driver app. It is built to demonstrate production-grade patterns for authentication, bookings, maps, payments, driver workflows, notifications, Docker, and CI coverage gates.
 
+If everything works on the first `docker compose up --build`, please open an issue so we can frame that miracle.
+
+```text
+      ______________________
+ ____/[] [] [] [] [] [] [] \____
+| _  DRIVEPAL TAXI - ETA: "2 min" _ |
+='-(_)--------------------------(_)-'
+```
+
 ## Contents
 
 - [Highlights](#highlights)
