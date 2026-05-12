@@ -1,0 +1,46 @@
+---
+description: NestJS API — modules, Postgres, security, observability, testing
+globs: api/**/*
+alwaysApply: false
+---
+
+# API (NestJS)
+
+## Architecture (feature-first)
+
+- One **domain module per feature** (`auth/`, `users/`, `orders/`): colocate `*.module.ts`, controller(s), service(s), DTOs, entities, and module-local tests. Prefer this over splitting all controllers/services into separate top-level folders.
+- **Controllers stay thin** (HTTP mapping, status codes, delegation). Business rules and transactions live in **services**; split services when a class does too much.
+- **CoreModule** (or equivalent): wire database, config, and one-time global providers once in `AppModule`. Use `@Global()` only for true cross-cutting modules (e.g. logger); keep `exports` intentional so other modules only see what they need.
+- **Repository pattern** (or ORM abstraction): persistence logic behind injectable repositories so services stay testable; avoid raw queries scattered in controllers.
+- **Avoid circular dependencies** between modules; use `forwardRef` sparingly and document why.
+
+## Data & PostgreSQL
+
+- **TypeORM or Prisma**: schema changes only via **migrations**; no hand-run DDL in app code. Indexes and constraints belong in migrations.
+- **Transactions** for multi-step writes; consistent error handling on rollback paths.
+- **Pagination, sorting, and filtering** as explicit DTOs/query params; cap page size to avoid abuse.
+
+## Validation & API surface
+
+- **`class-validator` + DTOs** on all inputs; use `ValidationPipe` with `whitelist` / `forbidNonWhitelisted` where appropriate.
+- **Stable error shape** (code, message, optional field errors); use a global **exception filter** registered from `main.ts` for consistency.
+- **Versioning** (`/v1/...`) or clear deprecation policy if the API is public.
+- **OpenAPI** (`@nestjs/swagger`): keep DTO decorators in sync with validation for maintainability.
+
+## Cross-cutting
+
+- **Guards** for auth; **interceptors** for logging, timeouts, or response mapping; **pipes** for transforms.
+- **Structured logging** (level, message, context); avoid logging secrets or full PII.
+- **Rate limiting** (`@nestjs/throttler`) on public or sensitive routes by default.
+- **Health checks** (`@nestjs/terminus` or custom) for DB readiness if you expose ops endpoints.
+
+## Config & security
+
+- **`@nestjs/config`**: validate env at startup (Joi/Zod/class-validator); fail fast on missing vars.
+- **Secrets** from env or secret stores—never in source. **CORS** and **Helmet** (or equivalent) configured deliberately for production.
+
+## Testing
+
+- **Unit tests** for services and pure helpers with mocks/fakes for repositories and HTTP clients.
+- **E2E or integration tests** for critical flows (auth, payments, multi-step use cases) against a test DB or containers.
+- Extend tests when changing **validation**, **status codes**, **auth**, or **persistence** behavior.

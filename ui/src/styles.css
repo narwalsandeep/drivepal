@@ -1,0 +1,48 @@
+@import "./styles/drivepal/tokens.css";
+@import "tailwindcss";
+@import "./styles/drivepal/components.css";
+
+/* Base — Inter + light scaffold (tokens) */
+body.drivepal-root {
+  margin: 0;
+  min-height: 100vh;
+  background-color: var(--drivepal-bg-scaffold);
+  color: var(--drivepal-text-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-family:
+    Inter,
+    system-ui,
+    -apple-system,
+    sans-serif;
+}
+
+/* Material Symbols Rounded — filled (600) for bold, app-like icons */
+.msr {
+  font-family: "Material Symbols Rounded", system-ui, sans-serif;
+  font-weight: normal;
+  font-style: normal;
+  font-size: 1.5rem;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  direction: ltr;
+  font-feature-settings: "liga";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-variation-settings:
+    "FILL" 1,
+    "wght" 600,
+    "GRAD" 0,
+    "opsz" 24;
+}
+
+.msr-sm {
+  font-size: 1.125rem;
+}
+
+.msr-lg {
+  font-size: 1.75rem;
+}

@@ -1,0 +1,60 @@
+/**
+ * DRIVEPAL web UI — light theme (Tailwind slate / zinc inspired).
+ * Surfaces & borders are light; primary CTAs use brand teal (same as Flutter/DrivepalBrand).
+ * Mobile Flutter uses mirrored constants in `app/lib/theme/drivepal_tokens.dart`.
+ */
+:root {
+  /* Brand accent (teal) — links, focus, info */
+  --drivepal-brand-seed: #14b8a6;
+
+  /* Surfaces — slate-50 page, white panels */
+  --drivepal-bg-scaffold: #f8fafc; /* slate-50 */
+  --drivepal-bg-input: #ffffff;
+  --drivepal-bg-card: #ffffff;
+  --drivepal-bg-overlay: rgb(248 250 252 / 0.92);
+
+  /* Borders — inputs at rest: neutral gray; cards unchanged */
+  --drivepal-border-input: #cbd5e1; /* slate-300 */
+  --drivepal-border-card: #e2e8f0;
+
+  /* Typography — dark text for titles/logo, muted body */
+  --drivepal-text-body: #475569; /* slate-600 */
+  --drivepal-text-heading: #0f172a; /* slate-900 — logo / card titles */
+  --drivepal-text-muted: #64748b; /* slate-500 */
+  --drivepal-text-faint: #94a3b8; /* slate-400 */
+  --drivepal-text-on-primary: #ffffff;
+
+  /* Icons in fields & UI — light slate (elegant, low contrast) */
+  --drivepal-accent-icon: #94a3b8; /* slate-400 */
+  --drivepal-accent-icon-soft: #cbd5e1; /* slate-300 */
+  --drivepal-accent-link: #0d9488; /* teal-600 */
+
+  /* Primary actions — brand teal (Flutter `DrivepalBrand.primaryButton` / staff tokens) */
+  --drivepal-bg-primary: #0d9488; /* teal-600 */
+  --drivepal-bg-primary-hover: #14b8a6; /* teal-500 */
+
+  /* Feedback */
+  --drivepal-text-danger: #dc2626; /* red-600 */
+  --drivepal-text-info: #0d9488; /* teal-600 */
+
+  /* Focus — teal border + soft glow (see `.drivepal-input:focus`) */
+  --drivepal-border-focus: #14b8a6; /* teal-500 */
+  --drivepal-input-focus-shadow:
+    0 1px 4px rgb(20 184 166 / 0.18),
+    0 2px 12px rgb(20 184 166 / 0.14);
+
+  --drivepal-control-height: 3.25rem;
+
+  --drivepal-radius-input: 0.75rem;
+  --drivepal-radius-card: 1rem;
+  --drivepal-radius-button: 0.75rem;
+
+  /* Subtle elevation on light — Tailwind shadow-sm + sm */
+  --drivepal-shadow-card:
+    0 1px 3px 0 rgb(15 23 42 / 0.06),
+    0 1px 2px -1px rgb(15 23 42 / 0.06);
+
+  /* Spinner */
+  --drivepal-spinner-track: #e2e8f0;
+  --drivepal-spinner-head: #0d9488; /* match primary */
+}

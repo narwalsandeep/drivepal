@@ -1,0 +1,97 @@
+name: drivepal
+
+# Development (default): Postgres + API with `nest start --watch` + Angular `ng serve` with live reload.
+#   docker compose up --build
+# Source is bind-mounted from `./api` and `./ui`; `node_modules` live in named volumes so edits reload
+# without reinstalling on every start.
+#
+# Production-style images (nginx + compiled API): use docker-compose.prod.yml
+
+services:
+  postgres:
+    restart: unless-stopped
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-drivepal}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-drivepal}
+      POSTGRES_DB: ${POSTGRES_DB:-drivepal}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-drivepal} -d ${POSTGRES_DB:-drivepal}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  pgadmin:
+    restart: unless-stopped
+    image: dpage/pgadmin4:8
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-team@switchcodes.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-drivepal}
+      PGADMIN_LISTEN_PORT: 80
+    ports:
+      - "${PGADMIN_PORT:-5050}:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: docker/api.dev.Dockerfile
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-drivepal}:${POSTGRES_PASSWORD:-drivepal}@postgres:5432/${POSTGRES_DB:-drivepal}
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production-use-long-random-string}
+      TYPEORM_SYNC: ${TYPEORM_SYNC:-true}
+      FRONTEND_WEB_URL: ${FRONTEND_WEB_URL:-http://localhost:4200}
+      DEFAULT_PHONE_REGION: ${DEFAULT_PHONE_REGION:-GB}
+      MAIL_HOST: ${MAIL_HOST:-}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_ENCRYPTION: ${MAIL_ENCRYPTION:-tls}
+      MAIL_FROM: ${MAIL_FROM:-}
+      MAIL_NAME: ${MAIL_NAME:-DRIVEPAL}
+      CORS_RELAXED: ${CORS_RELAXED:-true}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
+      CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: "1000"
+    ports:
+      - "${API_PORT:-3000}:3000"
+    volumes:
+      - ./api:/app
+      - api_node_modules:/app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  ui:
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: docker/ui.dev.Dockerfile
+    environment:
+      CHOKIDAR_USEPOLLING: "true"
+    ports:
+      - "${UI_PORT:-4200}:4200"
+    volumes:
+      - ./ui:/app
+      - ui_node_modules:/app/node_modules
+    depends_on:
+      api:
+        condition: service_started
+
+volumes:
+  postgres_data: {}
+  pgadmin_data: {}
+  api_node_modules: {}
+  ui_node_modules: {}

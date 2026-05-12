@@ -1,0 +1,39 @@
+---
+description: Angular + Tailwind — design system, performance, a11y, HTTP patterns
+globs: ui/**/*
+alwaysApply: false
+---
+
+# UI (Angular + Tailwind)
+
+## Centralized styling (web only)
+
+- **Tokens first**: extend the Tailwind theme (v3: `tailwind.config` + `content` scanning `./src/**/*.{html,ts}`; **v4 in this repo**: global CSS such as `src/styles.css` with `@import "tailwindcss"` + `.postcssrc.json` using `@tailwindcss/postcss`, and **`@theme` / `@source`** in CSS when customizing tokens). Keep one source of truth for design tokens; features use primitives, not scattered utilities for the same pattern.
+- **Primitives** (`table`, `box`/`card`, `textbox`/`input`, `button`, `label`, …) live under `shared/ui/` or `design-system/` as small standalone components composing utilities/tokens. Features **import primitives**; do not duplicate the same utility stacks for the same visual pattern. Use `@apply` only in shared layers for token-backed repeats.
+- **Dark mode / themes**: if supported, drive from CSS variables or Tailwind `dark:` consistently with token names.
+- **Independence from Flutter**: no shared CSS or symlinks into `app/`. Optional cross-platform alignment via **naming tokens similarly** and a short design note—not shared files.
+
+## Angular application structure
+
+- **Standalone components**, `inject()`, and **lazy-loaded feature routes** unless the repo standardizes on NgModules.
+- **Smart vs dumb**: leaf/presentational components receive data via inputs and emit outputs; containers load data and orchestrate. Prefer **`OnPush`** on presentational components when inputs are immutable or observables are async-piped.
+- **Forms**: one style per app—typed **Reactive Forms** or **signals-based** forms; validate on submit or per UX; show field-level errors from validators.
+- **Lists**: use **`trackBy`** on `*ngFor` / `@for`; prefer **virtual scroll** or pagination for large lists.
+- **Images**: use framework-optimized loading where available (e.g. NgOptimizedImage) for large media.
+
+## HTTP & state
+
+- **HttpClient** only via **injectable services**; components do not build URLs or headers ad hoc.
+- **Interceptors** for auth headers, refresh, and consistent error mapping to user-visible or app-level errors.
+- **RxJS**: prefer **`async` pipe** in templates over manual `subscribe` in components; use operators to keep streams explicit. If using **signals**, follow one chosen pattern for async bridging (toSignal / resource) project-wide.
+
+## Quality & accessibility
+
+- **Strict TypeScript**; avoid `any`. Follow repo **ESLint + Prettier**; run before considering work done.
+- **a11y**: semantic HTML, labels tied to inputs, focus management for overlays/dialogs, keyboard nav for interactive widgets.
+- **i18n**: if the app uses `@angular/localize` or ngx-translate, keep keys and bundles consistent when adding copy.
+
+## Testing
+
+- **Component tests** for primitives (inputs/outputs, disabled states, validation messages) and critical user flows.
+- Prefer assertions on **DOM outcome and contracts**, not private implementation details, unless testing a pure helper.

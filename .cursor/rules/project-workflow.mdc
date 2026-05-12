@@ -1,0 +1,40 @@
+---
+description: Repo-wide workflow — reuse, safety, verification, tests, tooling
+alwaysApply: true
+---
+
+# Workflow (all work in this repo)
+
+## Reuse & refactor
+
+- Prefer **extending** existing modules, services, components, widgets, and utilities before adding parallel implementations. Refactor toward **shared abstractions** only when it clearly reduces duplication **and** fits the task scope.
+
+## Preserve behavior
+
+- Do **not** remove or weaken behavior, non-obvious comments, error handling, or backwards-relevant paths **unless the task explicitly asks**. Do not delete code as “unused” without confirming no callers, tests, flags, or scripts rely on it.
+
+## Logic, flow, contracts
+
+- Trace **end-to-end**: entry points, branches, return values, side effects. Check **signatures**, DTO/query/body params, **null/empty/error** cases, **ordering**, **auth**, and **idempotency** where relevant. Match **existing types** and public contracts.
+
+## Quality gates before “done”
+
+- Re-read the **diff**: all callers updated, no dropped validation or security checks.
+- Run **project linters and formatters** (`eslint`, `prettier`, `dart analyze`, etc.) and **tests**; fix failures before handing off.
+- For API changes, smoke-check **OpenAPI** or client assumptions if the repo uses them.
+
+## Builds and tests (enforced locally)
+
+- **`api/`**: `npm run build` runs **`prebuild`** → **Jest** must pass before Nest compiles. Use this before releases and in CI for the API package.
+- **`ui/`**: `npm run build` runs **`prebuild`** → **Karma** (headless Chrome) must pass before `ng build`. The **Docker UI image** calls `npx ng build` directly (no browser in Alpine); run **`npm run test:ui`** (or `npm run build:ui` locally) in CI **before** building the image so tests still gate shipping.
+- **Flutter**: No npm `prebuild` hook; use **`npm run build:app`** from the repo root (**`flutter test`** then **`flutter build apk`**) or always run **`flutter test`** before **`flutter build …`**. For iOS/macOS, run tests then your chosen `flutter build` target.
+
+## Tests (required discipline)
+
+- Add or update **logical tests** for **new behavior** and **bug fixes** (regression). Prefer tests that assert **outcomes and contracts** (inputs/outputs, errors, HTTP status/body shapes) over brittle internals.
+- Cover **branches and parameter combinations** touched by the change. **API**: unit + integration/e2e where behavior crosses layers. **UI**: component/interaction tests for user-visible logic. **Flutter**: unit + widget tests for non-trivial logic and primitives.
+
+## Collaboration & safety net
+
+- If a change is **breaking** for clients, document it (changelog, migration note, or API version bump) per project convention.
+- When in doubt about deleting code or changing public APIs, **preserve and extend** rather than replace silently.

@@ -1,0 +1,30 @@
+---
+description: Auth flows — API owns truth; mobile/web client rules; branding parity
+alwaysApply: true
+---
+
+# Authentication (DRIVEPAL)
+
+## Source of truth
+
+- **`api/`** owns credentials, OTP issuance, password reset tokens, and JWTs. **`ui/`** and **`app/`** are clients only — never duplicate auth business rules in clients beyond basic input validation UX.
+
+## Flows (match product)
+
+1. **Signup**: first name + last name + email + mobile + password → **email OTP** → verify with `email` + `otp` → account + tokens. Email and mobile are **unique** across users.
+2. **Sign in**: **email or mobile** + password → **email OTP** (always to the account’s email) → verify → tokens.
+3. **Forgot password**: email only → email link with `kid` + `code` query params → new password.
+4. **Reset**: never send reset via SMS; web route **`/auth/reset-password`**, Flutter **`/reset-password`**.
+
+## Clients
+
+- **Angular**: use **`/api/auth/**`**; shared slate + teal visual language.
+- **Flutter**: `API_BASE` via **`--dart-define`** for device/emulator; tokens belong in secure storage when persisted.
+
+## Branding
+
+- Dark slate surface, teal accent, consistent with `DrivepalBrand` / Tailwind shell.
+
+## Edge cases
+
+- OTP TTL, attempt limits, non-enumerating forgot-password message, E.164 phone normalization.

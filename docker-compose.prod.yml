@@ -1,0 +1,83 @@
+name: drivepal
+
+# Production-style stack: compiled Nest API + static Angular behind nginx (no live reload).
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# For daily development with auto-reload, use the default `docker-compose.yml` instead.
+
+services:
+  postgres:
+    restart: unless-stopped
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-drivepal}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-drivepal}
+      POSTGRES_DB: ${POSTGRES_DB:-drivepal}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-drivepal} -d ${POSTGRES_DB:-drivepal}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  pgadmin:
+    restart: unless-stopped
+    image: dpage/pgadmin4:8
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-team@switchcodes.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-drivepal}
+      PGADMIN_LISTEN_PORT: 80
+    ports:
+      - "${PGADMIN_PORT:-5050}:80"
+    volumes:
+      - pgadmin_data_prod:/var/lib/pgadmin
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    restart: unless-stopped
+    build:
+      context: ./api
+      dockerfile: ../docker/api.Dockerfile
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-drivepal}:${POSTGRES_PASSWORD:-drivepal}@postgres:5432/${POSTGRES_DB:-drivepal}
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production-use-long-random-string}
+      TYPEORM_SYNC: ${TYPEORM_SYNC:-true}
+      FRONTEND_WEB_URL: ${FRONTEND_WEB_URL:-http://localhost:4200}
+      DEFAULT_PHONE_REGION: ${DEFAULT_PHONE_REGION:-GB}
+      MAIL_HOST: ${MAIL_HOST:-}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_ENCRYPTION: ${MAIL_ENCRYPTION:-tls}
+      MAIL_FROM: ${MAIL_FROM:-}
+      MAIL_NAME: ${MAIL_NAME:-DRIVEPAL}
+      CORS_RELAXED: ${CORS_RELAXED:-true}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
+    ports:
+      - "${API_PORT:-3000}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  ui:
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: docker/ui.Dockerfile
+    ports:
+      - "${UI_PORT:-4200}:80"
+    depends_on:
+      api:
+        condition: service_started
+
+volumes:
+  postgres_data_prod: {}
+  pgadmin_data_prod: {}

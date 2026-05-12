@@ -1,0 +1,21 @@
+{
+  "name": "drivepal",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "dev": "concurrently -n api,ui -c blue,magenta \"npm run dev --prefix api\" \"npm run dev --prefix ui\"",
+    "dev:api": "npm run start:dev --prefix api",
+    "dev:ui": "npm start --prefix ui",
+    "dev:db": "docker compose up -d postgres",
+    "dev:app": "flutter run --directory app",
+    "test:api": "npm test --prefix api",
+    "test:ui": "npm test --prefix ui -- --no-watch --browsers=ChromeHeadless",
+    "test:app": "flutter test --directory app",
+    "build:api": "npm run build --prefix api",
+    "build:ui": "npm run build --prefix ui",
+    "build:app": "flutter test --directory app && flutter build apk --directory app"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

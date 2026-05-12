@@ -1,0 +1,41 @@
+---
+description: Flutter — theme primitives, clean/feature architecture, performance, tests
+globs: app/**/*
+alwaysApply: false
+---
+
+# App (Flutter)
+
+## Centralized styling (mobile only)
+
+- **Theme**: `ThemeData`, `ColorScheme`, and **`ThemeExtension`** or dedicated token classes under `lib/core/theme/` (single place for colors, spacing, type scale). **Primitive widgets** (`AppButton`, `AppTextField`, cards, tables/lists surfaces, typography wrappers) live under `lib/shared/widgets/` or `lib/design_system/`, read tokens/theme, and expose consistent parameters (size, variant, enabled, loading).
+- **Screens compose primitives**; avoid copy-pasting `BoxDecoration` / text styles across features.
+- **Independence from web**: never import Tailwind/web CSS. Optional **token naming parity** with `ui/` for designers; implementations stay Dart-only.
+
+## Architecture (scalable, predictable)
+
+- **Feature-first** is default: `lib/features/<feature>/` with **`data` / `domain` / `presentation`** (or equivalent) as complexity grows. **Domain** stays pure Dart (entities, repository interfaces, use cases); **data** holds DTOs, API clients, mappers, implementations; **presentation** holds widgets and state.
+- **Dependency rule**: inner layers do not depend on Flutter UI frameworks in domain; repositories are interfaces in domain, implementations in data.
+- **State**: one primary approach—**Riverpod**, **Bloc**, or **Provider**—project-wide; avoid mixing ad-hoc `setState` in large features.
+- **Navigation**: **go_router** (or chosen package) with typed/declarative routes; keep deep links and guards consistent with auth state.
+
+## API & models
+
+- HTTP behind **repositories**; use **`dio`** or **`http`** consistently. Map **DTOs → domain models** in data layer; handle network and parse errors explicitly.
+- Prefer **immutable** models (`freezed` + `json_serializable` if adopted) and clear **equality** for state updates.
+
+## Performance & correctness
+
+- **Long lists**: `ListView.builder` / slivers; avoid building huge static children.
+- **const** constructors where possible; avoid **async gaps after `BuildContext`** without `mounted` checks.
+- **Platform differences**: isolate with `Theme.of`, `MediaQuery`, or platform branching in dedicated helpers/widgets.
+
+## Quality
+
+- **`dart format`** + **`dart analyze`** + project **lints** (`flutter_lints` or stricter) before finishing a task.
+
+## Testing
+
+- **Unit tests**: domain logic, use cases, repositories (mock clients), mappers.
+- **Widget tests**: primitives (enabled/disabled, error text, tap callbacks), and critical screens.
+- Assert **parameters and states** that affect layout, semantics, or navigation—not only snapshot everything.

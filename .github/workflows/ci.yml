@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-coverage:
+    runs-on: ubuntu-latest
+    env:
+      COVERAGE_MIN: "90"
+      CHROME_BIN: /usr/bin/google-chrome
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            api/package-lock.json
+            ui/package-lock.json
+
+      - name: Setup Chrome
+        uses: browser-actions/setup-chrome@v1
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install API dependencies
+        run: npm ci
+        working-directory: api
+
+      - name: Install UI dependencies
+        run: npm ci
+        working-directory: ui
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+        working-directory: app
+
+      - name: Run API tests with coverage
+        run: npm run test:cov --prefix api
+
+      - name: Run UI tests with coverage
+        run: npm run test --prefix ui -- --watch=false --browsers=ChromeHeadless --code-coverage
+
+      - name: Run Flutter tests with coverage
+        run: flutter test --directory app --coverage
+
+      - name: Enforce API coverage threshold
+        run: ./scripts/check-lcov-threshold.sh "api/coverage/lcov.info" "$COVERAGE_MIN" "API"
+
+      - name: Enforce UI coverage threshold
+        run: ./scripts/check-lcov-threshold.sh "ui/coverage/ui/lcov.info" "$COVERAGE_MIN" "UI"
+
+      - name: Enforce Flutter coverage threshold
+        run: ./scripts/check-lcov-threshold.sh "app/coverage/lcov.info" "$COVERAGE_MIN" "Flutter"
+
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: |
+            api/coverage
+            ui/coverage
+            app/coverage
