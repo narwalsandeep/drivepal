@@ -1,6 +1,6 @@
 # DRIVEPAL
 
-[![CI](https://github.com/<owner>/<repo>/actions/workflows/ci.yml/badge.svg)](https://github.com/<owner>/<repo>/actions/workflows/ci.yml)
+[![CI](https://github.com/narwalsandeep/drivepal/actions/workflows/ci.yml/badge.svg)](https://github.com/narwalsandeep/drivepal/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 ![API coverage >=90%](https://img.shields.io/badge/API%20coverage-%E2%89%A590%25-brightgreen?logo=jest)
 ![UI coverage >=90%](https://img.shields.io/badge/UI%20coverage-%E2%89%A590%25-brightgreen?logo=angular)
@@ -9,8 +9,6 @@
 ![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)
 
 DRIVEPAL is an open-source ride-booking platform in one repository: a NestJS API, Angular web UI, and Flutter customer/driver app. It is built to demonstrate production-grade patterns for authentication, bookings, maps, payments, driver workflows, notifications, Docker, and CI coverage gates.
-
-Replace `<owner>/<repo>` in the badge URLs after publishing this repository to GitHub.
 
 ## Contents
 
@@ -287,8 +285,7 @@ This repo includes the files GitHub users expect on public projects:
 
 Recommended GitHub settings after publishing:
 
-1. Replace `<owner>/<repo>` in the CI badge URL.
-2. Enable branch protection on `main`.
+1. Enable branch protection on `main`.
 3. Require the `CI` status check before merge.
 4. Require pull request review before merge.
 5. Enable Dependabot alerts and secret scanning.
