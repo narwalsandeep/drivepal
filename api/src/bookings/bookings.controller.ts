@@ -15,6 +15,7 @@ import {
 import { BookingsService } from './bookings.service';
 import { CancelRideBookingDto } from './dto/cancel-ride-booking.dto';
 import { CreateRideBookingDto } from './dto/create-ride-booking.dto';
+import { UpdateDriverLocationDto } from './dto/driver-location.dto';
 import { ListRideBookingsQueryDto } from './dto/list-ride-bookings-query.dto';
 
 @Controller('bookings')
@@ -106,6 +107,15 @@ export class BookingsController {
     return this.bookings.pickupForDriver(authorization, bookingId);
   }
 
+  @Patch(':bookingId/arrive')
+  @HttpCode(HttpStatus.OK)
+  arriveForDriver(
+    @Headers('authorization') authorization: string | undefined,
+    @Param('bookingId', ParseUUIDPipe) bookingId: string,
+  ) {
+    return this.bookings.arriveForDriver(authorization, bookingId);
+  }
+
   @Patch(':bookingId/finish')
   @HttpCode(HttpStatus.OK)
   finishForDriver(
@@ -124,6 +134,16 @@ export class BookingsController {
     return this.bookings.cancelForDriver(authorization, bookingId);
   }
 
+  @Patch(':bookingId/driver-location')
+  @HttpCode(HttpStatus.OK)
+  updateDriverLocation(
+    @Headers('authorization') authorization: string | undefined,
+    @Param('bookingId', ParseUUIDPipe) bookingId: string,
+    @Body() dto: UpdateDriverLocationDto,
+  ) {
+    return this.bookings.updateDriverLocation(authorization, bookingId, dto);
+  }
+
   @Patch(':bookingId/cancel')
   @HttpCode(HttpStatus.OK)
   cancel(
@@ -132,5 +152,14 @@ export class BookingsController {
     @Body() dto: CancelRideBookingDto,
   ) {
     return this.bookings.cancelForCustomer(authorization, bookingId, dto);
+  }
+
+  @Get(':bookingId/tracking')
+  @HttpCode(HttpStatus.OK)
+  trackingForCustomer(
+    @Headers('authorization') authorization: string | undefined,
+    @Param('bookingId', ParseUUIDPipe) bookingId: string,
+  ) {
+    return this.bookings.getTrackingForCustomer(authorization, bookingId);
   }
 }

@@ -5,6 +5,42 @@ import '../theme/drivepal_tokens.dart';
 
 export 'profile/drivepal_profile_chrome.dart' show DrivepalProfileSectionLabel;
 
+/// Standard full-page scaffold for pushed customer/driver detail screens.
+///
+/// Keeps title/back behavior and theme colors consistent across standalone pages.
+class DrivepalStandalonePageScaffold extends StatelessWidget {
+  const DrivepalStandalonePageScaffold({
+    super.key,
+    required this.title,
+    required this.body,
+    this.actions,
+    this.bottomNavigationBar,
+  });
+
+  final String title;
+  final Widget body;
+  final List<Widget>? actions;
+  final Widget? bottomNavigationBar;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: DrivepalTokens.bgScaffold,
+      appBar: AppBar(
+        title: Text(title),
+        centerTitle: false,
+        elevation: 0,
+        backgroundColor: DrivepalTokens.bgScaffold,
+        foregroundColor: DrivepalTokens.textHeading,
+        surfaceTintColor: Colors.transparent,
+        actions: actions,
+      ),
+      body: body,
+      bottomNavigationBar: bottomNavigationBar,
+    );
+  }
+}
+
 /// Top-of-page hero: icon, title, subtitle — matches profile card language.
 class DrivepalFeatureIntroCard extends StatelessWidget {
   const DrivepalFeatureIntroCard({

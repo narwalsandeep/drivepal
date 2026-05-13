@@ -24,6 +24,31 @@ This document summarizes layout, contracts, and quality practices. Detailed edit
 - **Schema**: `TYPEORM_SYNC` is for **dev/bootstrap** only (`.env.example`). Production should use **migrations**, not sync.
 - **Pure helpers** (e.g. `mask-email`, `resolve-app-login-role`) stay in `utils/` with unit tests.
 
+## Fare engine (single source)
+
+- Fare computation is centralized in `api/src/bookings/bookings.service.ts`.
+- Per-car distance base rates live in `api/src/bookings/constants/car-options.constant.ts`.
+- Pricing policy is configured through environment variables (no code edits needed for routine tuning):
+  - `FARE_BASE_GBP`
+  - `FARE_PER_KM_MULTIPLIER`
+  - `FARE_PER_MINUTE_GBP`
+  - `FARE_MIN_GBP`
+  - `FARE_SCHEDULED_SURCHARGE_GBP`
+  - `FARE_SURGE_MULTIPLIER`
+
+Formula:
+
+```text
+distanceFare = distanceKm * car.pricePerKmGbp * FARE_PER_KM_MULTIPLIER
+timeFare = durationMinutes * FARE_PER_MINUTE_GBP
+subtotal = FARE_BASE_GBP + distanceFare + timeFare + scheduledSurcharge
+surged = subtotal * FARE_SURGE_MULTIPLIER
+finalFare = max(FARE_MIN_GBP, surged)
+chargedMinor = round(finalFare * 100)
+```
+
+This split keeps the project scalable: product teams tune pricing from env, while developers preserve stable API/app contracts.
+
 ## Builds and CI
 
 - **`npm run build`** in `api/` runs **`npm test`** first (`prebuild`), then `nest build`.

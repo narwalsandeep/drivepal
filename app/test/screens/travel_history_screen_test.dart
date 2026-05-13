@@ -87,6 +87,6 @@ void main() {
     expect(find.text('10 Start Street'), findsOneWidget);
     expect(find.text('Airport Terminal 2'), findsOneWidget);
     expect(find.textContaining('City Sedan'), findsOneWidget);
-    expect(find.text('Requested'), findsOneWidget);
+    expect(find.text('Waiting for driver'), findsOneWidget);
   });
 }

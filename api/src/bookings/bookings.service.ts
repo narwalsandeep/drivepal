@@ -26,7 +26,9 @@ import {
 } from './constants/car-options.constant';
 import { CreateRideBookingDto } from './dto/create-ride-booking.dto';
 import { CancelRideBookingDto } from './dto/cancel-ride-booking.dto';
+import { UpdateDriverLocationDto } from './dto/driver-location.dto';
 import { ListRideBookingsQueryDto } from './dto/list-ride-bookings-query.dto';
+import { RideBookingDriverLocation } from './entities/ride-booking-driver-location.entity';
 import { DriverTripEarning } from './entities/driver-trip-earning.entity';
 import { RideBooking } from './entities/ride-booking.entity';
 import { BookingStatus } from './enums/booking-status.enum';
@@ -50,6 +52,14 @@ export class BookingsService {
     BookingStatus.ACCEPTED,
     BookingStatus.DRIVER_ARRIVING,
   ]);
+  private static readonly defaultFareModel = Object.freeze({
+    baseFareGbp: 0,
+    perKmMultiplier: 1,
+    perMinuteRateGbp: 0,
+    minFareGbp: 0,
+    scheduledSurchargeGbp: 0,
+    surgeMultiplier: 1,
+  });
   private readonly logger = new Logger(BookingsService.name);
 
   constructor(
@@ -63,6 +73,8 @@ export class BookingsService {
     private readonly paymentAttempts: Repository<PaymentAttempt>,
     @InjectRepository(DriverTripEarning)
     private readonly tripEarnings: Repository<DriverTripEarning>,
+    @InjectRepository(RideBookingDriverLocation)
+    private readonly rideBookingDriverLocations: Repository<RideBookingDriverLocation>,
     private readonly config: ConfigService,
     private readonly auth: AuthService,
     private readonly mail: MailService,
@@ -196,7 +208,9 @@ export class BookingsService {
     );
     const chargeAmountMinor = this.calculateFareAmountMinor(
       dto.route.distanceMeters,
+      dto.route?.durationSeconds ?? null,
       selectedCarOption.pricePerKmGbp,
+      Boolean(scheduledFor),
     );
     const charge = await this.payments.chargeSavedCardForBooking({
       userId: customerId,
@@ -463,8 +477,10 @@ export class BookingsService {
     if (!booking) {
       throw new NotFoundException('Trip not found');
     }
-    if (booking.status !== BookingStatus.ACCEPTED) {
-      throw new ConflictException('Only accepted trips can be picked up');
+    if (booking.status !== BookingStatus.DRIVER_ARRIVING) {
+      throw new ConflictException(
+        'Trip must be marked as driver arriving before pickup',
+      );
     }
     booking.status = BookingStatus.IN_PROGRESS;
     const saved = await this.bookings.save(booking);
@@ -473,6 +489,34 @@ export class BookingsService {
       kind: 'trip_started',
       title: 'Trip started',
       body: 'Your ride is now in progress.',
+      metadata: { bookingId: saved.id, driverId },
+    });
+    return { booking: this.toResponse(saved) };
+  }
+
+  async arriveForDriver(
+    authorizationHeader: string | undefined,
+    bookingId: string,
+  ) {
+    const driverId = await this.getAuthenticatedDriverId(authorizationHeader);
+    const booking = await this.bookings.findOne({
+      where: { id: bookingId, driverId },
+    });
+    if (!booking) {
+      throw new NotFoundException('Trip not found');
+    }
+    if (booking.status !== BookingStatus.ACCEPTED) {
+      throw new ConflictException(
+        'Only accepted trips can be marked as driver arriving',
+      );
+    }
+    booking.status = BookingStatus.DRIVER_ARRIVING;
+    const saved = await this.bookings.save(booking);
+    await this.notifications.createForUser({
+      userId: saved.customerId,
+      kind: 'trip_driver_arriving',
+      title: 'Driver is arriving',
+      body: 'Your driver is on the way to pickup.',
       metadata: { bookingId: saved.id, driverId },
     });
     return { booking: this.toResponse(saved) };
@@ -670,17 +714,127 @@ export class BookingsService {
     booking.cancelReasonCode = dto.reasonCode;
     booking.cancelReasonNote = reasonNote;
     const saved = await this.bookings.save(booking);
+    const refundAttempt = await this.findLatestSucceededPaymentAttempt(
+      booking.id,
+    );
+    const refunded = Boolean(refundAttempt);
+    if (refundAttempt) {
+      await this.payments.refundBookingCharge(
+        refundAttempt.id,
+        'Customer cancelled trip before pickup',
+      );
+    }
     await this.notifications.createForCustomer({
       userId: customerId,
       kind: 'trip_cancelled',
       title: 'Trip cancelled',
-      body: 'Your trip was cancelled successfully.',
+      body: refunded
+        ? 'Your trip was cancelled and a refund has been initiated.'
+        : 'Your trip was cancelled successfully.',
       metadata: {
         bookingId: saved.id,
         reasonCode: dto.reasonCode,
+        refundInitiated: refunded,
       },
     });
     return { booking: this.toResponse(saved) };
+  }
+
+  async updateDriverLocation(
+    authorizationHeader: string | undefined,
+    bookingId: string,
+    dto: UpdateDriverLocationDto,
+  ) {
+    const driverId = await this.getAuthenticatedDriverId(authorizationHeader);
+    const booking = await this.bookings.findOne({ where: { id: bookingId } });
+    if (!booking) {
+      throw new NotFoundException('Trip not found');
+    }
+    if (booking.driverId !== driverId) {
+      throw new UnauthorizedException(
+        'Driver is not assigned to this booking.',
+      );
+    }
+    if (!BookingsService.activeDriverTripStatuses.has(booking.status)) {
+      throw new ConflictException('Driver location update is not allowed now.');
+    }
+    const now = new Date();
+    const existing = await this.rideBookingDriverLocations.findOne({
+      where: { bookingId },
+    });
+    const nextSample = this.rideBookingDriverLocations.create({
+      id: existing?.id,
+      bookingId,
+      driverId,
+      latitude: dto.latitude,
+      longitude: dto.longitude,
+      accuracyMeters: dto.accuracyMeters ?? null,
+      recordedAt: now,
+    });
+    await this.rideBookingDriverLocations.save(nextSample);
+    return {
+      tracking: {
+        bookingId,
+        status: booking.status,
+        driverLocation: {
+          latitude: nextSample.latitude,
+          longitude: nextSample.longitude,
+          accuracyMeters: nextSample.accuracyMeters,
+          recordedAt: now.toISOString(),
+        },
+      },
+    };
+  }
+
+  async getTrackingForCustomer(
+    authorizationHeader: string | undefined,
+    bookingId: string,
+  ) {
+    const customerId =
+      await this.auth.getAuthenticatedUserId(authorizationHeader);
+    const customer = await this.users.findOne({ where: { id: customerId } });
+    if (
+      !customer ||
+      customer.status !== UserStatus.ACTIVE ||
+      !customer.isCustomer
+    ) {
+      throw new UnauthorizedException('Customer account unavailable');
+    }
+    const booking = await this.bookings.findOne({
+      where: { id: bookingId, customerId },
+    });
+    if (!booking) {
+      throw new NotFoundException('Trip not found');
+    }
+    const latestLocation = await this.rideBookingDriverLocations.findOne({
+      where: { bookingId },
+    });
+    return {
+      tracking: {
+        booking: this.toResponse(booking),
+        driverLocation: latestLocation
+          ? {
+              latitude: latestLocation.latitude,
+              longitude: latestLocation.longitude,
+              accuracyMeters: latestLocation.accuracyMeters,
+              recordedAt: latestLocation.recordedAt.toISOString(),
+              updatedAt: latestLocation.updatedAt?.toISOString() ?? null,
+            }
+          : null,
+      },
+    };
+  }
+
+  private async findLatestSucceededPaymentAttempt(
+    bookingId: string,
+  ): Promise<PaymentAttempt | null> {
+    return this.paymentAttempts.findOne({
+      where: {
+        bookingId,
+        status: PaymentAttemptStatus.SUCCEEDED,
+      },
+      order: { createdAt: 'DESC' },
+    });
   }
 
   private toResponse(booking: RideBooking) {
@@ -807,15 +961,65 @@ export class BookingsService {
 
   private calculateFareAmountMinor(
     distanceMeters: number,
+    durationSeconds: number | null,
     pricePerKmGbp: number,
+    isScheduled: boolean,
   ): number {
     const distanceKm = distanceMeters / 1000;
-    const fareGbp = distanceKm * pricePerKmGbp;
+    const durationMinutes = (durationSeconds ?? 0) / 60;
+    const fareModel = this.getFareModelConfig();
+    const distanceFare = distanceKm * pricePerKmGbp * fareModel.perKmMultiplier;
+    const timeFare = durationMinutes * fareModel.perMinuteRateGbp;
+    const scheduledSurcharge = isScheduled ? fareModel.scheduledSurchargeGbp : 0;
+    const subtotal = fareModel.baseFareGbp + distanceFare + timeFare + scheduledSurcharge;
+    const surged = subtotal * fareModel.surgeMultiplier;
+    const fareGbp = Math.max(fareModel.minFareGbp, surged);
     const amountMinor = Math.round(fareGbp * 100);
     if (amountMinor <= 0) {
       throw new BadRequestException('Charge amount must be greater than zero.');
     }
     return amountMinor;
+  }
+
+  private getFareModelConfig() {
+    return {
+      baseFareGbp: this.readConfigNumber(
+        'FARE_BASE_GBP',
+        BookingsService.defaultFareModel.baseFareGbp,
+      ),
+      perKmMultiplier: this.readConfigNumber(
+        'FARE_PER_KM_MULTIPLIER',
+        BookingsService.defaultFareModel.perKmMultiplier,
+      ),
+      perMinuteRateGbp: this.readConfigNumber(
+        'FARE_PER_MINUTE_GBP',
+        BookingsService.defaultFareModel.perMinuteRateGbp,
+      ),
+      minFareGbp: this.readConfigNumber(
+        'FARE_MIN_GBP',
+        BookingsService.defaultFareModel.minFareGbp,
+      ),
+      scheduledSurchargeGbp: this.readConfigNumber(
+        'FARE_SCHEDULED_SURCHARGE_GBP',
+        BookingsService.defaultFareModel.scheduledSurchargeGbp,
+      ),
+      surgeMultiplier: this.readConfigNumber(
+        'FARE_SURGE_MULTIPLIER',
+        BookingsService.defaultFareModel.surgeMultiplier,
+      ),
+    };
+  }
+
+  private readConfigNumber(key: string, fallback: number): number {
+    const raw = this.config.get<string | number>(key);
+    if (raw == null || raw === '') {
+      return fallback;
+    }
+    const parsed = typeof raw === 'number' ? raw : Number(raw);
+    if (Number.isNaN(parsed) || !Number.isFinite(parsed)) {
+      return fallback;
+    }
+    return parsed;
   }
 
   private normalizeScheduledFor(

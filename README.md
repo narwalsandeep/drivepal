@@ -27,6 +27,7 @@ If everything works on the first `docker compose up --build`, please open an iss
 - [Repository Structure](#repository-structure)
 - [Quick Start](#quick-start)
 - [Configuration](#configuration)
+- [Fare Model](#fare-model)
 - [Testing and Coverage](#testing-and-coverage)
 - [Open Source Health](#open-source-health)
 - [Documentation](#documentation)
@@ -96,9 +97,10 @@ If everything works on the first `docker compose up --build`, please open an iss
 
 - Customer trip history.
 - Driver trip history.
-- Driver lifecycle: accept, pick up, finish.
+- Driver lifecycle: accept, arriving, pick up, finish.
 - Driver can release an assigned trip back to the requested pool.
 - Customer reassignment flow for assigned trips.
+- Customer active-trip screen with live tracking snapshot polling.
 - Completed and cancelled trip status styling.
 
 ### Driver Operations
@@ -116,6 +118,7 @@ If everything works on the first `docker compose up --build`, please open an iss
 - Card listing and removal with confirmation.
 - Off-session ride charge.
 - Payment attempt logging and refund fallback.
+- Configurable fare algorithm (distance + optional base/time/surge/scheduled surcharge) via env.
 - Driver earning record calculated only after completed trips.
 - Driver "My Earning" page with total and per-trip details.
 - Current driver earning share: 10% of charged ride amount.
@@ -234,6 +237,7 @@ Important settings:
 | Auth | `JWT_SECRET`, `DEFAULT_PHONE_REGION` |
 | Mail | `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM`, `MAIL_NAME` |
 | Stripe | `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY` |
+| Fare model | `FARE_BASE_GBP`, `FARE_PER_KM_MULTIPLIER`, `FARE_PER_MINUTE_GBP`, `FARE_MIN_GBP`, `FARE_SCHEDULED_SURCHARGE_GBP`, `FARE_SURGE_MULTIPLIER` |
 | Maps | `GOOGLE_MAPS_API_KEY` |
 | TypeORM | `TYPEORM_SYNC`, `TYPEORM_MIGRATIONS_RUN` |
 | Ports | `POSTGRES_PORT`, `PGADMIN_PORT`, `API_PORT`, `UI_PORT` |
@@ -244,6 +248,52 @@ Notes:
 - `TYPEORM_SYNC=true` is only for local bootstrap. Use migrations for shared environments.
 - Flutter Android emulator usually reaches Docker API via `http://10.0.2.2:3000`.
 - Stripe and Google Maps features require valid keys.
+
+## Fare Model
+
+Pricing is centralized in the API booking service and is controlled by env values.
+
+Source of truth:
+
+- Fare algorithm: `api/src/bookings/bookings.service.ts`
+- Car distance rates (per km): `api/src/bookings/constants/car-options.constant.ts`
+
+Algorithm (GBP):
+
+```text
+distanceFare = distanceKm * car.pricePerKmGbp * FARE_PER_KM_MULTIPLIER
+timeFare = durationMinutes * FARE_PER_MINUTE_GBP
+subtotal = FARE_BASE_GBP + distanceFare + timeFare + scheduledSurcharge
+surged = subtotal * FARE_SURGE_MULTIPLIER
+finalFare = max(FARE_MIN_GBP, surged)
+chargedMinor = round(finalFare * 100)
+```
+
+Where `scheduledSurcharge = FARE_SCHEDULED_SURCHARGE_GBP` only when `scheduledFor` is set.
+
+Default behavior (distance-only) is preserved when all new fare env values are left at defaults:
+
+```env
+FARE_BASE_GBP=0
+FARE_PER_KM_MULTIPLIER=1
+FARE_PER_MINUTE_GBP=0
+FARE_MIN_GBP=0
+FARE_SCHEDULED_SURCHARGE_GBP=0
+FARE_SURGE_MULTIPLIER=1
+```
+
+Example tuned profile:
+
+```env
+FARE_BASE_GBP=2.0
+FARE_PER_KM_MULTIPLIER=1.0
+FARE_PER_MINUTE_GBP=0.12
+FARE_MIN_GBP=5.0
+FARE_SCHEDULED_SURCHARGE_GBP=1.5
+FARE_SURGE_MULTIPLIER=1.25
+```
+
+This design keeps scaling simple: adjust business pricing policy in env, while keeping code and client contracts stable.
 
 ## Testing and Coverage
 
@@ -295,15 +345,16 @@ This repo includes the files GitHub users expect on public projects:
 Recommended GitHub settings after publishing:
 
 1. Enable branch protection on `main`.
-3. Require the `CI` status check before merge.
-4. Require pull request review before merge.
-5. Enable Dependabot alerts and secret scanning.
-6. Connect Codecov/Coveralls if you want live coverage trend badges.
-7. Add screenshots or a demo video under `docs/` or `.github/assets/` and link them from this README.
+2. Require the `CI` status check before merge.
+3. Require pull request review before merge.
+4. Enable Dependabot alerts and secret scanning.
+5. Connect Codecov/Coveralls if you want live coverage trend badges.
+6. Add screenshots or a demo video under `docs/` or `.github/assets/` and link them from this README.
 
 ## Documentation
 
 - Architecture: `docs/ARCHITECTURE.md`
+- API package guide: `api/README.md`
 - Flutter runtime notes: `app/README.md`
 - Contribution workflow: `CONTRIBUTING.md`
 - Security reporting: `SECURITY.md`

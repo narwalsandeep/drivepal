@@ -1,6 +1,8 @@
 import 'dart:math' as math;
+import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:google_maps_flutter_platform_interface/google_maps_flutter_platform_interface.dart'
     as gmaps_pi;
@@ -20,17 +22,29 @@ import '../../widgets/common/drivepal_location_icon.dart';
 import '../../widgets/maps/booking_interactive_map.dart';
 
 class DriverNewRequestsScreen extends StatefulWidget {
-  const DriverNewRequestsScreen({super.key});
+  const DriverNewRequestsScreen({
+    super.key,
+    this.bookingApi,
+    this.driverPositionProvider,
+    this.locationTickerInterval = const Duration(seconds: 8),
+    this.requestFeedRefreshInterval = const Duration(seconds: 12),
+  });
+
+  final BookingApi? bookingApi;
+  final Future<Position?> Function()? driverPositionProvider;
+  final Duration locationTickerInterval;
+  final Duration requestFeedRefreshInterval;
 
   @override
   State<DriverNewRequestsScreen> createState() =>
       _DriverNewRequestsScreenState();
 }
 
-enum _DriverTripPanelMode { openRequest, accepted, inProgress }
+enum _DriverTripPanelMode { openRequest, accepted, arriving, inProgress }
 
-class _DriverNewRequestsScreenState extends State<DriverNewRequestsScreen> {
-  final BookingApi _bookingApi = BookingApi();
+class _DriverNewRequestsScreenState extends State<DriverNewRequestsScreen>
+    with WidgetsBindingObserver {
+  late final BookingApi _bookingApi = widget.bookingApi ?? BookingApi();
   bool _loading = true;
   String? _error;
   List<BookingHistoryItem> _openItems = const <BookingHistoryItem>[];
@@ -39,11 +53,17 @@ class _DriverNewRequestsScreenState extends State<DriverNewRequestsScreen> {
   bool _actionBusy = false;
   DriverTabRefreshNotifier? _tabRefreshNotifier;
   int _newTabRefreshVersion = 0;
+  Timer? _driverLocationTimer;
+  Timer? _requestFeedTimer;
+  String? _trackingBookingId;
+  bool _postingDriverLocation = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
+    _startRequestFeedPolling();
   }
 
   void _onTabRefreshTick() {
@@ -74,15 +94,39 @@ class _DriverNewRequestsScreenState extends State<DriverNewRequestsScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _tabRefreshNotifier?.removeListener(_onTabRefreshTick);
+    _stopDriverLocationLoop();
+    _stopRequestFeedPolling();
     super.dispose();
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _startRequestFeedPolling();
+      _load(silent: true);
+      return;
+    }
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached ||
+        state == AppLifecycleState.hidden) {
+      _stopRequestFeedPolling();
+    }
+  }
+
+  Future<void> _load({bool silent = false}) async {
+    if (!silent || (_activeTrip == null && _openItems.isEmpty)) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    } else {
+      setState(() {
+        _error = null;
+      });
+    }
     try {
       final token = await context.read<AuthSession>().getValidAccessToken();
       if (!mounted) return;
@@ -123,13 +167,31 @@ class _DriverNewRequestsScreenState extends State<DriverNewRequestsScreen> {
         }
         _loading = false;
       });
+      _syncDriverLocationLoop();
     } on AuthApiException catch (e) {
       if (!mounted) return;
       setState(() {
         _loading = false;
         _error = e.message;
       });
+      _stopDriverLocationLoop();
     }
+  }
+
+  void _startRequestFeedPolling() {
+    _requestFeedTimer?.cancel();
+    _requestFeedTimer = Timer.periodic(
+      widget.requestFeedRefreshInterval,
+      (_) {
+        if (!mounted || _loading || _actionBusy) return;
+        _load(silent: true);
+      },
+    );
+  }
+
+  void _stopRequestFeedPolling() {
+    _requestFeedTimer?.cancel();
+    _requestFeedTimer = null;
   }
 
   Future<void> _accept(BookingHistoryItem item) async {
@@ -171,6 +233,7 @@ class _DriverNewRequestsScreenState extends State<DriverNewRequestsScreen> {
           _selectedIndex = _openItems.isEmpty ? 0 : _openItems.length - 1;
         }
       });
+      _syncDriverLocationLoop();
     } on AuthApiException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -214,6 +277,51 @@ class _DriverNewRequestsScreenState extends State<DriverNewRequestsScreen> {
                 dropoffLongitude: active.dropoffLongitude,
               );
       setState(() => _activeTrip = updated);
+      _syncDriverLocationLoop();
+    } on AuthApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) {
+        setState(() => _actionBusy = false);
+      }
+    }
+  }
+
+  Future<void> _arrive() async {
+    final active = _activeTrip;
+    if (active == null || _actionBusy) return;
+    setState(() => _actionBusy = true);
+    try {
+      final token = await context.read<AuthSession>().getValidAccessToken();
+      if (!mounted || token == null) return;
+      final res = await _bookingApi.arriveBookingAsDriver(
+        bearerToken: token,
+        bookingId: active.id,
+      );
+      if (!mounted) return;
+      final updatedRaw = res['booking'];
+      final updated =
+          updatedRaw is Map<String, dynamic>
+              ? BookingHistoryItem.fromJson(updatedRaw)
+              : BookingHistoryItem(
+                id: active.id,
+                status: 'driver_arriving',
+                pickupAddress: active.pickupAddress,
+                dropoffAddress: active.dropoffAddress,
+                carTitle: active.carTitle,
+                paymentMaskedNumber: active.paymentMaskedNumber,
+                distanceMeters: active.distanceMeters,
+                durationSeconds: active.durationSeconds,
+                pickupLatitude: active.pickupLatitude,
+                pickupLongitude: active.pickupLongitude,
+                dropoffLatitude: active.dropoffLatitude,
+                dropoffLongitude: active.dropoffLongitude,
+              );
+      setState(() => _activeTrip = updated);
+      _syncDriverLocationLoop();
     } on AuthApiException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -239,6 +347,7 @@ class _DriverNewRequestsScreenState extends State<DriverNewRequestsScreen> {
       );
       if (!mounted) return;
       setState(() => _activeTrip = null);
+      _stopDriverLocationLoop();
       await _load();
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -269,6 +378,7 @@ class _DriverNewRequestsScreenState extends State<DriverNewRequestsScreen> {
       );
       if (!mounted) return;
       setState(() => _activeTrip = null);
+      _stopDriverLocationLoop();
       await _load();
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -288,6 +398,84 @@ class _DriverNewRequestsScreenState extends State<DriverNewRequestsScreen> {
     }
   }
 
+  bool _shouldTrackDriverLocation(BookingHistoryItem? trip) {
+    if (trip == null) return false;
+    return trip.status == 'accepted' ||
+        trip.status == 'driver_arriving' ||
+        trip.status == 'in_progress';
+  }
+
+  void _syncDriverLocationLoop() {
+    final active = _activeTrip;
+    if (!_shouldTrackDriverLocation(active)) {
+      _stopDriverLocationLoop();
+      return;
+    }
+    final bookingId = active!.id;
+    if (_trackingBookingId == bookingId && _driverLocationTimer != null) {
+      return;
+    }
+    _trackingBookingId = bookingId;
+    _driverLocationTimer?.cancel();
+    _publishDriverLocation();
+    _driverLocationTimer = Timer.periodic(
+      widget.locationTickerInterval,
+      (_) => _publishDriverLocation(),
+    );
+  }
+
+  void _stopDriverLocationLoop() {
+    _driverLocationTimer?.cancel();
+    _driverLocationTimer = null;
+    _trackingBookingId = null;
+  }
+
+  Future<void> _publishDriverLocation() async {
+    if (!mounted || _postingDriverLocation) {
+      return;
+    }
+    final bookingId = _trackingBookingId;
+    if (bookingId == null || bookingId.isEmpty) {
+      return;
+    }
+    _postingDriverLocation = true;
+    try {
+      final token = await context.read<AuthSession>().getValidAccessToken();
+      if (!mounted || token == null) return;
+      final customPositionProvider = widget.driverPositionProvider;
+      Position? pos;
+      if (customPositionProvider != null) {
+        pos = await customPositionProvider();
+        if (pos == null) return;
+      } else {
+        final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+        if (!serviceEnabled) return;
+        var permission = await Geolocator.checkPermission();
+        if (permission == LocationPermission.denied) {
+          permission = await Geolocator.requestPermission();
+        }
+        if (permission == LocationPermission.denied ||
+            permission == LocationPermission.deniedForever) {
+          return;
+        }
+        pos = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.bestForNavigation,
+        );
+      }
+      await _bookingApi.updateDriverLocation(
+        bookingId: bookingId,
+        latitude: pos!.latitude,
+        longitude: pos!.longitude,
+        accuracyMeters: pos!.accuracy,
+        bearerToken: token,
+      );
+    } catch (_) {
+      // Keep location publishing non-blocking during an active trip.
+    } finally {
+      _postingDriverLocation = false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -297,7 +485,8 @@ class _DriverNewRequestsScreenState extends State<DriverNewRequestsScreen> {
     if (current != null) {
       final mode = switch (current.status) {
         'in_progress' => _DriverTripPanelMode.inProgress,
-        'accepted' || 'driver_arriving' => _DriverTripPanelMode.accepted,
+        'driver_arriving' => _DriverTripPanelMode.arriving,
+        'accepted' => _DriverTripPanelMode.accepted,
         _ => _DriverTripPanelMode.openRequest,
       };
       final safeBottom = MediaQuery.paddingOf(context).bottom;
@@ -355,6 +544,7 @@ class _DriverNewRequestsScreenState extends State<DriverNewRequestsScreen> {
                       totalCount: _openItems.length,
                       busy: _actionBusy,
                       onAccept: () => _accept(current),
+                      onArrive: _arrive,
                       onPickup: _pickup,
                       onFinish: _finish,
                       onCancel: _cancelActive,
@@ -396,7 +586,8 @@ class _DriverNewRequestsScreenState extends State<DriverNewRequestsScreen> {
             ),
           const _DriverEmptyState(
             title: 'No open requests right now',
-            subtitle: 'New rider requests will appear here automatically.',
+            subtitle:
+                'Pull to refresh anytime. This view also refreshes automatically.',
           ),
         ],
       ),
@@ -412,6 +603,7 @@ class _DriverRequestPager extends StatelessWidget {
     required this.totalCount,
     required this.busy,
     required this.onAccept,
+    required this.onArrive,
     required this.onPickup,
     required this.onFinish,
     required this.onCancel,
@@ -425,6 +617,7 @@ class _DriverRequestPager extends StatelessWidget {
   final int totalCount;
   final bool busy;
   final VoidCallback onAccept;
+  final VoidCallback onArrive;
   final VoidCallback onPickup;
   final VoidCallback onFinish;
   final VoidCallback onCancel;
@@ -583,6 +776,7 @@ class _DriverRequestPager extends StatelessWidget {
               mode: mode,
               busy: busy,
               onAccept: onAccept,
+              onArrive: onArrive,
               onPickup: onPickup,
               onFinish: onFinish,
               onCancel: onCancel,
@@ -602,6 +796,7 @@ class _DriverBottomActionBar extends StatelessWidget {
     required this.mode,
     required this.busy,
     required this.onAccept,
+    required this.onArrive,
     required this.onPickup,
     required this.onFinish,
     required this.onCancel,
@@ -613,6 +808,7 @@ class _DriverBottomActionBar extends StatelessWidget {
   final _DriverTripPanelMode mode;
   final bool busy;
   final VoidCallback onAccept;
+  final VoidCallback onArrive;
   final VoidCallback onPickup;
   final VoidCallback onFinish;
   final VoidCallback onCancel;
@@ -645,6 +841,43 @@ class _DriverBottomActionBar extends StatelessWidget {
             child: SizedBox(
               height: buttonHeight,
               child: FilledButton(
+                onPressed: busy ? null : onArrive,
+                style: FilledButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  backgroundColor: DrivepalTokens.bgPrimaryHover,
+                  foregroundColor: DrivepalTokens.textOnPrimary,
+                ),
+                child: Text(busy ? 'Working...' : 'Arrived'),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (mode == _DriverTripPanelMode.arriving) {
+      return Row(
+        children: [
+          Expanded(
+            child: SizedBox(
+              height: buttonHeight,
+              child: OutlinedButton(
+                onPressed: busy ? null : onCancel,
+                style: OutlinedButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  foregroundColor: DrivepalTokens.textDanger,
+                ),
+                child: const Text('Cancel'),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: SizedBox(
+              height: buttonHeight,
+              child: FilledButton(
                 onPressed: busy ? null : onPickup,
                 style: FilledButton.styleFrom(
                   padding: EdgeInsets.zero,
@@ -652,7 +885,7 @@ class _DriverBottomActionBar extends StatelessWidget {
                   backgroundColor: DrivepalTokens.bgPrimaryHover,
                   foregroundColor: DrivepalTokens.textOnPrimary,
                 ),
-                child: Text(busy ? 'Working...' : 'Pick up'),
+                child: Text(busy ? 'Working...' : 'Start ride'),
               ),
             ),
           ),

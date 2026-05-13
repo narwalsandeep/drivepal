@@ -19,6 +19,7 @@ import { PaymentAttemptStatus } from '../payments/enums/payment-attempt-status.e
 import { DriverCar } from '../driver-cars/entities/driver-car.entity';
 import { BookingsService } from './bookings.service';
 import { DriverTripEarning } from './entities/driver-trip-earning.entity';
+import { RideBookingDriverLocation } from './entities/ride-booking-driver-location.entity';
 import { RideBooking } from './entities/ride-booking.entity';
 import { BookingStatus } from './enums/booking-status.enum';
 
@@ -43,6 +44,7 @@ describe('BookingsService', () => {
   let bookings: MockRepo<RideBooking>;
   let paymentAttempts: MockRepo<PaymentAttempt>;
   let tripEarnings: MockRepo<DriverTripEarning>;
+  let rideBookingDriverLocations: MockRepo<RideBookingDriverLocation>;
   let driverCars: MockRepo<DriverCar>;
   let users: MockRepo<User>;
   let auth: { getAuthenticatedUserId: jest.Mock };
@@ -97,6 +99,18 @@ describe('BookingsService', () => {
         Promise.resolve({
           id: 'earning-1',
           createdAt: new Date('2026-05-10T11:20:00.000Z'),
+          ...input,
+        }),
+      ),
+    };
+    rideBookingDriverLocations = {
+      findOne: jest.fn().mockResolvedValue(null),
+      create: jest.fn((input: unknown) => input),
+      save: jest.fn((input: Record<string, unknown>) =>
+        Promise.resolve({
+          id: 'driver-location-1',
+          createdAt: new Date('2026-05-10T11:20:00.000Z'),
+          updatedAt: new Date('2026-05-10T11:20:00.000Z'),
           ...input,
         }),
       ),
@@ -160,6 +174,10 @@ describe('BookingsService', () => {
         { provide: getRepositoryToken(RideBooking), useValue: bookings },
         { provide: getRepositoryToken(PaymentAttempt), useValue: paymentAttempts },
         { provide: getRepositoryToken(DriverTripEarning), useValue: tripEarnings },
+        {
+          provide: getRepositoryToken(RideBookingDriverLocation),
+          useValue: rideBookingDriverLocations,
+        },
         { provide: getRepositoryToken(DriverCar), useValue: driverCars },
         { provide: getRepositoryToken(User), useValue: users },
         { provide: ConfigService, useValue: config },
@@ -205,6 +223,37 @@ describe('BookingsService', () => {
       expect.objectContaining({
         userId: 'user-1',
         kind: 'trip_requested',
+      }),
+    );
+  });
+
+  it('applies configurable fare model values from environment', async () => {
+    config.get.mockImplementation((key: string) => {
+      switch (key) {
+        case 'GOOGLE_MAPS_API_KEY':
+          return 'maps-key';
+        case 'FARE_BASE_GBP':
+          return '2.0';
+        case 'FARE_PER_MINUTE_GBP':
+          return '0.1';
+        case 'FARE_MIN_GBP':
+          return '0';
+        case 'FARE_SCHEDULED_SURCHARGE_GBP':
+          return '0';
+        case 'FARE_PER_KM_MULTIPLIER':
+          return '1';
+        case 'FARE_SURGE_MULTIPLIER':
+          return '1';
+        default:
+          return undefined;
+      }
+    });
+
+    await service.createForCustomer('Bearer token', dto);
+
+    expect(payments.chargeSavedCardForBooking).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amountMinor: 2218,
       }),
     );
   });
@@ -342,6 +391,11 @@ describe('BookingsService', () => {
   });
 
   it('cancels a customer booking with reason', async () => {
+    paymentAttempts.findOne?.mockResolvedValueOnce({
+      id: 'attempt-3',
+      bookingId: 'booking-3',
+      status: PaymentAttemptStatus.SUCCEEDED,
+    });
     bookings.findOne?.mockResolvedValueOnce({
       id: 'booking-3',
       customerId: 'user-1',
@@ -391,6 +445,58 @@ describe('BookingsService', () => {
       expect.objectContaining({
         userId: 'user-1',
         kind: 'trip_cancelled',
+        metadata: expect.objectContaining({
+          bookingId: 'booking-3',
+          reasonCode: 'change_of_plans',
+          refundInitiated: true,
+        }),
+      }),
+    );
+    expect(payments.refundBookingCharge).toHaveBeenCalledWith(
+      'attempt-3',
+      'Customer cancelled trip before pickup',
+    );
+  });
+
+  it('cancels booking without refund when no successful payment attempt exists', async () => {
+    paymentAttempts.findOne?.mockResolvedValueOnce(null);
+    bookings.findOne?.mockResolvedValueOnce({
+      id: 'booking-30',
+      customerId: 'user-1',
+      status: BookingStatus.REQUESTED,
+      pickupAddress: 'A',
+      pickupLatitude: 1,
+      pickupLongitude: 2,
+      dropoffAddress: 'B',
+      dropoffLatitude: 3,
+      dropoffLongitude: 4,
+      routeDistanceMeters: 10,
+      routeDurationSeconds: 20,
+      routeDurationInTrafficSeconds: 25,
+      carTypeId: 'car',
+      carTypeTitle: 'Car',
+      carSeats: 4,
+      paymentMethodId: 'pay',
+      paymentBrand: 'Visa',
+      paymentMaskedNumber: '**** 1111',
+      cancelledAt: null,
+      cancelReasonCode: null,
+      cancelReasonNote: null,
+      requestedAt: new Date('2026-05-10T11:00:00.000Z'),
+      createdAt: new Date('2026-05-10T11:00:00.000Z'),
+    });
+
+    await service.cancelForCustomer('Bearer token', 'booking-30', {
+      reasonCode: 'change_of_plans',
+    });
+
+    expect(payments.refundBookingCharge).not.toHaveBeenCalled();
+    expect(notifications.createForCustomer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          bookingId: 'booking-30',
+          refundInitiated: false,
+        }),
       }),
     );
   });
@@ -560,7 +666,7 @@ describe('BookingsService', () => {
     ).rejects.toBeInstanceOf(ConflictException);
   });
 
-  it('marks accepted booking as in progress on pickup', async () => {
+  it('marks accepted booking as driver arriving', async () => {
     users.findOne?.mockResolvedValueOnce({
       id: 'driver-1',
       status: UserStatus.ACTIVE,
@@ -598,7 +704,56 @@ describe('BookingsService', () => {
       Promise.resolve(input),
     );
 
-    const res = await service.pickupForDriver('Bearer token', 'booking-6');
+    const res = await service.arriveForDriver('Bearer token', 'booking-6');
+
+    expect(res.booking.status).toBe(BookingStatus.DRIVER_ARRIVING);
+    expect(notifications.createForUser).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'user-1',
+        kind: 'trip_driver_arriving',
+      }),
+    );
+  });
+
+  it('marks arriving booking as in progress on pickup', async () => {
+    users.findOne?.mockResolvedValueOnce({
+      id: 'driver-1',
+      status: UserStatus.ACTIVE,
+      isDriver: true,
+      driverProfileCompleted: true,
+    });
+    bookings.findOne?.mockResolvedValueOnce({
+      id: 'booking-6b',
+      customerId: 'user-1',
+      driverId: 'driver-1',
+      status: BookingStatus.DRIVER_ARRIVING,
+      pickupAddress: 'A',
+      pickupLatitude: 1,
+      pickupLongitude: 2,
+      dropoffAddress: 'B',
+      dropoffLatitude: 3,
+      dropoffLongitude: 4,
+      routeDistanceMeters: 10,
+      routeDurationSeconds: 20,
+      routeDurationInTrafficSeconds: 25,
+      carTypeId: 'car',
+      carTypeTitle: 'Car',
+      carSeats: 4,
+      paymentMethodId: 'pay',
+      paymentBrand: 'Visa',
+      paymentMaskedNumber: '**** 1111',
+      cancelledAt: null,
+      cancelReasonCode: null,
+      cancelReasonNote: null,
+      acceptedAt: new Date('2026-05-10T11:01:00.000Z'),
+      requestedAt: new Date('2026-05-10T11:00:00.000Z'),
+      createdAt: new Date('2026-05-10T11:00:00.000Z'),
+    });
+    bookings.save?.mockImplementation((input: RideBooking) =>
+      Promise.resolve(input),
+    );
+
+    const res = await service.pickupForDriver('Bearer token', 'booking-6b');
 
     expect(res.booking.status).toBe(BookingStatus.IN_PROGRESS);
     expect(notifications.createForUser).toHaveBeenCalledWith(
@@ -787,6 +942,125 @@ describe('BookingsService', () => {
     expect(mail.sendTripUnassignedToDriver).toHaveBeenCalled();
   });
 
+  it('updates driver location for active trip', async () => {
+    auth.getAuthenticatedUserId.mockResolvedValueOnce('driver-1');
+    users.findOne?.mockResolvedValueOnce({
+      id: 'driver-1',
+      status: UserStatus.ACTIVE,
+      isDriver: true,
+      driverProfileCompleted: true,
+      driverDocumentStatus: 'approved',
+    });
+    bookings.findOne?.mockResolvedValueOnce({
+      id: 'booking-track-1',
+      customerId: 'user-1',
+      driverId: 'driver-1',
+      status: BookingStatus.ACCEPTED,
+    });
+    rideBookingDriverLocations.findOne?.mockResolvedValueOnce(null);
+
+    const res = await service.updateDriverLocation('Bearer token', 'booking-track-1', {
+      latitude: 51.5,
+      longitude: -0.12,
+      accuracyMeters: 14,
+    });
+
+    expect(rideBookingDriverLocations.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bookingId: 'booking-track-1',
+        driverId: 'driver-1',
+        latitude: 51.5,
+        longitude: -0.12,
+        accuracyMeters: 14,
+      }),
+    );
+    expect(res.tracking.bookingId).toBe('booking-track-1');
+    expect(res.tracking.status).toBe(BookingStatus.ACCEPTED);
+  });
+
+  it('rejects driver location update for non-active trip status', async () => {
+    auth.getAuthenticatedUserId.mockResolvedValueOnce('driver-1');
+    users.findOne?.mockResolvedValueOnce({
+      id: 'driver-1',
+      status: UserStatus.ACTIVE,
+      isDriver: true,
+      driverProfileCompleted: true,
+      driverDocumentStatus: 'approved',
+    });
+    bookings.findOne?.mockResolvedValueOnce({
+      id: 'booking-track-2',
+      customerId: 'user-1',
+      driverId: 'driver-1',
+      status: BookingStatus.COMPLETED,
+    });
+
+    await expect(
+      service.updateDriverLocation('Bearer token', 'booking-track-2', {
+        latitude: 51.5,
+        longitude: -0.12,
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('returns customer tracking snapshot with latest driver location', async () => {
+    users.findOne?.mockResolvedValueOnce({
+      id: 'user-1',
+      status: UserStatus.ACTIVE,
+      isCustomer: true,
+    });
+    bookings.findOne?.mockResolvedValueOnce({
+      id: 'booking-track-3',
+      customerId: 'user-1',
+      driverId: 'driver-2',
+      status: BookingStatus.ACCEPTED,
+      pickupAddress: 'A',
+      pickupLatitude: 1,
+      pickupLongitude: 2,
+      dropoffAddress: 'B',
+      dropoffLatitude: 3,
+      dropoffLongitude: 4,
+      routeDistanceMeters: 10,
+      routeDurationSeconds: 20,
+      routeDurationInTrafficSeconds: 25,
+      carTypeId: 'car',
+      carTypeTitle: 'Car',
+      carSeats: 4,
+      paymentMethodId: 'pay',
+      paymentBrand: 'Visa',
+      paymentMaskedNumber: '**** 1111',
+      cancelledAt: null,
+      cancelReasonCode: null,
+      cancelReasonNote: null,
+      acceptedAt: new Date('2026-05-10T11:01:00.000Z'),
+      requestedAt: new Date('2026-05-10T11:00:00.000Z'),
+      createdAt: new Date('2026-05-10T11:00:00.000Z'),
+    });
+    rideBookingDriverLocations.findOne?.mockResolvedValueOnce({
+      id: 'driver-location-9',
+      bookingId: 'booking-track-3',
+      driverId: 'driver-2',
+      latitude: 51.48,
+      longitude: -0.32,
+      accuracyMeters: 10,
+      recordedAt: new Date('2026-05-10T11:03:00.000Z'),
+      updatedAt: new Date('2026-05-10T11:03:00.000Z'),
+    });
+
+    const res = await service.getTrackingForCustomer(
+      'Bearer token',
+      'booking-track-3',
+    );
+
+    expect(res.tracking.booking.id).toBe('booking-track-3');
+    expect(res.tracking.driverLocation).toEqual(
+      expect.objectContaining({
+        latitude: 51.48,
+        longitude: -0.32,
+        accuracyMeters: 10,
+      }),
+    );
+  });
+
   it('reopens customer trip for reassignment when driver already accepted', async () => {
     bookings.findOne?.mockResolvedValueOnce({
       id: 'booking-9',
@@ -857,6 +1131,7 @@ describe('BookingsService', () => {
     );
     expect(mail.sendTripReopenedToCustomer).toHaveBeenCalled();
     expect(mail.sendTripUnassignedToDriver).toHaveBeenCalled();
+    expect(payments.refundBookingCharge).not.toHaveBeenCalled();
   });
 
   it('rejects cancel for unknown booking', async () => {

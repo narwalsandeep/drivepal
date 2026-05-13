@@ -135,6 +135,66 @@ class BookingApi {
     }
   }
 
+  Future<BookingTrackingSnapshot> fetchTrackingForBooking({
+    required String bookingId,
+    required String bearerToken,
+  }) async {
+    try {
+      final res = await _client.get(
+        _u('/$bookingId/tracking'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $bearerToken',
+        },
+      );
+      final decoded = jsonDecode(res.body.isEmpty ? '{}' : res.body) as Object?;
+      if (res.statusCode >= 400) {
+        throw AuthApiException(_formatError(decoded, res.statusCode));
+      }
+      if (decoded is! Map<String, dynamic>) {
+        throw AuthApiException('Tracking data is unavailable right now.');
+      }
+      return BookingTrackingSnapshot.fromJson(decoded);
+    } on http.ClientException catch (e) {
+      throw AuthApiException(
+        'Could not reach API at $_apiBase (network/CORS). '
+        'Is Nest running on port 3000? ${e.message}',
+      );
+    }
+  }
+
+  Future<void> updateDriverLocation({
+    required String bookingId,
+    required double latitude,
+    required double longitude,
+    double? accuracyMeters,
+    required String bearerToken,
+  }) async {
+    try {
+      final res = await _client.patch(
+        _u('/$bookingId/driver-location'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $bearerToken',
+        },
+        body: jsonEncode({
+          'latitude': latitude,
+          'longitude': longitude,
+          if (accuracyMeters != null) 'accuracyMeters': accuracyMeters,
+        }),
+      );
+      final decoded = jsonDecode(res.body.isEmpty ? '{}' : res.body) as Object?;
+      if (res.statusCode >= 400) {
+        throw AuthApiException(_formatError(decoded, res.statusCode));
+      }
+    } on http.ClientException catch (e) {
+      throw AuthApiException(
+        'Could not reach API at $_apiBase (network/CORS). '
+        'Is Nest running on port 3000? ${e.message}',
+      );
+    }
+  }
+
   Future<List<BookingHistoryItem>> fetchDriverOpenBookings({
     required String bearerToken,
     int limit = 100,
@@ -207,6 +267,16 @@ class BookingApi {
   }) async {
     return _patchDriverBookingAction(
       path: '/$bookingId/pickup',
+      bearerToken: bearerToken,
+    );
+  }
+
+  Future<Map<String, dynamic>> arriveBookingAsDriver({
+    required String bearerToken,
+    required String bookingId,
+  }) async {
+    return _patchDriverBookingAction(
+      path: '/$bookingId/arrive',
       bearerToken: bearerToken,
     );
   }
@@ -442,6 +512,57 @@ class BookingHistoryItem {
           cancellation is Map ? (cancellation['reasonCode'] as String?) : null,
       cancellationNote:
           cancellation is Map ? (cancellation['note'] as String?) : null,
+    );
+  }
+}
+
+class BookingDriverLocation {
+  const BookingDriverLocation({
+    required this.latitude,
+    required this.longitude,
+    this.accuracyMeters,
+    this.recordedAt,
+  });
+
+  final double latitude;
+  final double longitude;
+  final double? accuracyMeters;
+  final DateTime? recordedAt;
+
+  factory BookingDriverLocation.fromJson(Map<String, dynamic> json) {
+    final recordedAtRaw = json['recordedAt'];
+    return BookingDriverLocation(
+      latitude: (json['latitude'] as num?)?.toDouble() ?? 0,
+      longitude: (json['longitude'] as num?)?.toDouble() ?? 0,
+      accuracyMeters: (json['accuracyMeters'] as num?)?.toDouble(),
+      recordedAt:
+          recordedAtRaw is String ? DateTime.tryParse(recordedAtRaw) : null,
+    );
+  }
+}
+
+class BookingTrackingSnapshot {
+  const BookingTrackingSnapshot({required this.booking, this.driverLocation});
+
+  final BookingHistoryItem booking;
+  final BookingDriverLocation? driverLocation;
+
+  factory BookingTrackingSnapshot.fromJson(Map<String, dynamic> json) {
+    final tracking = json['tracking'];
+    if (tracking is! Map<String, dynamic>) {
+      throw AuthApiException('Tracking response format is invalid.');
+    }
+    final bookingRaw = tracking['booking'];
+    if (bookingRaw is! Map<String, dynamic>) {
+      throw AuthApiException('Booking payload is missing in tracking response.');
+    }
+    final locationRaw = tracking['driverLocation'];
+    return BookingTrackingSnapshot(
+      booking: BookingHistoryItem.fromJson(bookingRaw),
+      driverLocation:
+          locationRaw is Map<String, dynamic>
+              ? BookingDriverLocation.fromJson(locationRaw)
+              : null,
     );
   }
 }

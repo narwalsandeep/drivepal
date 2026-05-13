@@ -190,156 +190,159 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<PaymentMethodsStore>(
-      builder: (context, store, _) {
-        return RefreshIndicator(
-          onRefresh: () => store.loadCards(context.read<AuthSession>()),
-          child: ListView(
-            padding: drivepalFloatingShellBodyPadding(context, extraBottom: 8),
-            children: [
-              const DrivepalFeatureIntroCard(
-                icon: Icons.account_balance_wallet_rounded,
-                title: DrivepalAppShellCopy.riderWalletIntroTitle,
-                subtitle: DrivepalAppShellCopy.riderWalletIntroSubtitle,
-                badgeLabel: DrivepalAppShellCopy.riderWalletBadgeReady,
-              ),
-              const SizedBox(height: 6),
-              const DrivepalProfileSectionLabel(
-                DrivepalAppShellCopy.riderWalletSectionAddMethod,
-              ),
-              DrivepalElevatedPanel(
-                padding: const EdgeInsets.all(14),
-                child: FilledButton.tonalIcon(
-                  onPressed: store.isAddingCard ? null : _addCard,
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(52),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(
-                        DrivepalTokens.radiusInput,
+    return DrivepalStandalonePageScaffold(
+      title: 'Payment methods',
+      body: Consumer<PaymentMethodsStore>(
+        builder: (context, store, _) {
+          return RefreshIndicator(
+            onRefresh: () => store.loadCards(context.read<AuthSession>()),
+            child: ListView(
+              padding: drivepalFloatingShellBodyPadding(context, extraBottom: 8),
+              children: [
+                const DrivepalFeatureIntroCard(
+                  icon: Icons.account_balance_wallet_rounded,
+                  title: DrivepalAppShellCopy.riderWalletIntroTitle,
+                  subtitle: DrivepalAppShellCopy.riderWalletIntroSubtitle,
+                  badgeLabel: DrivepalAppShellCopy.riderWalletBadgeReady,
+                ),
+                const SizedBox(height: 6),
+                const DrivepalProfileSectionLabel(
+                  DrivepalAppShellCopy.riderWalletSectionAddMethod,
+                ),
+                DrivepalElevatedPanel(
+                  padding: const EdgeInsets.all(14),
+                  child: FilledButton.tonalIcon(
+                    onPressed: store.isAddingCard ? null : _addCard,
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(52),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(
+                          DrivepalTokens.radiusInput,
+                        ),
                       ),
                     ),
-                  ),
-                  icon:
+                    icon:
+                        store.isAddingCard
+                            ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                            : const Icon(Icons.add_card_rounded),
+                    label: Text(
                       store.isAddingCard
-                          ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                          : const Icon(Icons.add_card_rounded),
-                  label: Text(
-                    store.isAddingCard
-                        ? 'Opening secure card form...'
-                        : DrivepalAppShellCopy.riderWalletAddCardCta,
-                  ),
-                ),
-              ),
-              const DrivepalProfileSectionLabel(
-                DrivepalAppShellCopy.riderWalletSectionSavedCards,
-              ),
-              if (store.isLoading)
-                const DrivepalElevatedPanel(
-                  padding: EdgeInsets.symmetric(horizontal: 14, vertical: 18),
-                  child: Center(
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                )
-              else if (store.cards.isEmpty)
-                const DrivepalElevatedPanel(
-                  padding: EdgeInsets.symmetric(horizontal: 14, vertical: 16),
-                  child: DrivepalPanelIconSummary(
-                    iconData: Icons.credit_card_rounded,
-                    title: DrivepalAppShellCopy.riderWalletNoCardsTitle,
-                    body: DrivepalAppShellCopy.riderWalletNoCardsBody,
-                  ),
-                )
-              else
-                ...store.cards.map(
-                  (card) => Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: DrivepalElevatedPanel(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 14,
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.credit_card_rounded, size: 20),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '${card.brand.toUpperCase()} ${card.maskedNumber}',
-                                  style: Theme.of(context).textTheme.bodyLarge
-                                      ?.copyWith(fontWeight: FontWeight.w700),
-                                ),
-                                Text(
-                                  'Exp ${card.expMonth.toString().padLeft(2, '0')}/${card.expYear}',
-                                  style: Theme.of(context).textTheme.bodySmall,
-                                ),
-                              ],
-                            ),
-                          ),
-                          if (card.isDefault)
-                            Container(
-                              margin: const EdgeInsets.only(right: 8),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(999),
-                                color: Colors.black,
-                              ),
-                              child: const Text(
-                                'Default',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          IconButton(
-                            onPressed:
-                                store.busyCardId == card.id
-                                    ? null
-                                    : () => _removeCard(card),
-                            icon:
-                                store.busyCardId == card.id
-                                    ? const SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
-                                    )
-                                    : const Icon(
-                                      Icons.delete_outline_rounded,
-                                      color: DrivepalTokens.textDanger,
-                                    ),
-                            tooltip: 'Remove card',
-                          ),
-                        ],
-                      ),
+                          ? 'Opening secure card form...'
+                          : DrivepalAppShellCopy.riderWalletAddCardCta,
                     ),
                   ),
                 ),
-              if (store.error != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  store.error!,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(color: Colors.black87),
+                const DrivepalProfileSectionLabel(
+                  DrivepalAppShellCopy.riderWalletSectionSavedCards,
                 ),
+                if (store.isLoading)
+                  const DrivepalElevatedPanel(
+                    padding: EdgeInsets.symmetric(horizontal: 14, vertical: 18),
+                    child: Center(
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                else if (store.cards.isEmpty)
+                  const DrivepalElevatedPanel(
+                    padding: EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+                    child: DrivepalPanelIconSummary(
+                      iconData: Icons.credit_card_rounded,
+                      title: DrivepalAppShellCopy.riderWalletNoCardsTitle,
+                      body: DrivepalAppShellCopy.riderWalletNoCardsBody,
+                    ),
+                  )
+                else
+                  ...store.cards.map(
+                    (card) => Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: DrivepalElevatedPanel(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 14,
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.credit_card_rounded, size: 20),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '${card.brand.toUpperCase()} ${card.maskedNumber}',
+                                    style: Theme.of(context).textTheme.bodyLarge
+                                        ?.copyWith(fontWeight: FontWeight.w700),
+                                  ),
+                                  Text(
+                                    'Exp ${card.expMonth.toString().padLeft(2, '0')}/${card.expYear}',
+                                    style: Theme.of(context).textTheme.bodySmall,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (card.isDefault)
+                              Container(
+                                margin: const EdgeInsets.only(right: 8),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(999),
+                                  color: Colors.black,
+                                ),
+                                child: const Text(
+                                  'Default',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            IconButton(
+                              onPressed:
+                                  store.busyCardId == card.id
+                                      ? null
+                                      : () => _removeCard(card),
+                              icon:
+                                  store.busyCardId == card.id
+                                      ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                      : const Icon(
+                                        Icons.delete_outline_rounded,
+                                        color: DrivepalTokens.textDanger,
+                                      ),
+                              tooltip: 'Remove card',
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                if (store.error != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    store.error!,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: Colors.black87),
+                  ),
+                ],
               ],
-            ],
-          ),
-        );
-      },
+            ),
+          );
+        },
+      ),
     );
   }
 }

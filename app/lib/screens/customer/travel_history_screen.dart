@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../services/auth_api.dart';
@@ -6,6 +7,7 @@ import '../../services/auth_session.dart';
 import '../../services/booking_api.dart';
 import '../../services/customer_tab_refresh_notifier.dart';
 import '../../theme/drivepal_app_shell_copy.dart';
+import '../../theme/drivepal_booking_status_theme.dart';
 import '../../theme/drivepal_tokens.dart';
 import '../../widgets/common/drivepal_location_icon.dart';
 import '../../widgets/drivepal_shell_layout.dart';
@@ -24,18 +26,8 @@ class TravelHistoryScreen extends StatefulWidget {
 class _TravelHistoryScreenState extends State<TravelHistoryScreen> {
   late final BookingApi _bookingApi = widget.bookingApi ?? BookingApi();
   late Future<List<BookingHistoryItem>> _future = _loadTrips();
-  final Set<String> _cancellingTripIds = <String>{};
   CustomerTabRefreshNotifier? _tabRefreshNotifier;
   int _tripsTabRefreshVersion = 0;
-
-  static const List<_CancelReasonOption> _cancelReasonOptions = [
-    _CancelReasonOption('change_of_plans', 'Change of plans'),
-    _CancelReasonOption('driver_delay', 'Driver is taking too long'),
-    _CancelReasonOption('pickup_changed', 'Pickup location changed'),
-    _CancelReasonOption('booked_by_mistake', 'Booked by mistake'),
-    _CancelReasonOption('fare_concern', 'Price concern'),
-    _CancelReasonOption('other', 'Other reason'),
-  ];
 
   Future<List<BookingHistoryItem>> _loadTrips() async {
     final token = await context.read<AuthSession>().getValidAccessToken();
@@ -86,220 +78,12 @@ class _TravelHistoryScreenState extends State<TravelHistoryScreen> {
     super.dispose();
   }
 
-  Future<void> _onTapCancelTrip(BookingHistoryItem trip) async {
-    if (_cancellingTripIds.contains(trip.id)) return;
-    final request = await _showCancelTripModal();
-    if (!mounted || request == null) return;
-
-    setState(() {
-      _cancellingTripIds.add(trip.id);
-    });
-    try {
-      final token = await context.read<AuthSession>().getValidAccessToken();
-      if (!mounted) return;
-      if (token == null) {
-        _showBottomMessage('Please sign in again to cancel this trip.');
-        return;
-      }
-      await _bookingApi.cancelBooking(
-        bookingId: trip.id,
-        reasonCode: request.reasonCode,
-        note: request.note,
-        bearerToken: token,
-      );
-      if (!mounted) return;
-      _showBottomMessage('Trip cancelled successfully.');
-      await _refresh();
-    } on AuthApiException catch (e) {
-      if (!mounted) return;
-      _showBottomMessage(e.message);
-    } catch (_) {
-      if (!mounted) return;
-      _showBottomMessage('Could not cancel trip. Please try again.');
-    } finally {
-      if (mounted) {
-        setState(() {
-          _cancellingTripIds.remove(trip.id);
-        });
-      }
-    }
-  }
-
-  Future<_CancelTripRequest?> _showCancelTripModal() async {
-    String selectedReason = _cancelReasonOptions.first.code;
-    final noteCtrl = TextEditingController();
-    try {
-      return await showModalBottomSheet<_CancelTripRequest>(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        builder: (ctx) {
-          return StatefulBuilder(
-            builder: (ctx, setModalState) {
-              return SafeArea(
-                top: false,
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    12,
-                    0,
-                    12,
-                    drivepalModalBottomInset(ctx),
-                  ),
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: DrivepalTokens.bgCard,
-                      borderRadius: BorderRadius.circular(DrivepalTokens.radiusCard),
-                      border: Border.all(
-                        color: DrivepalTokens.borderCard.withValues(alpha: 0.95),
-                      ),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Text(
-                            'Cancel trip',
-                            style: Theme.of(ctx).textTheme.titleLarge?.copyWith(
-                              color: DrivepalTokens.textHeading,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          DropdownButtonFormField<String>(
-                            value: selectedReason,
-                            items:
-                                _cancelReasonOptions
-                                    .map(
-                                      (item) => DropdownMenuItem<String>(
-                                        value: item.code,
-                                        child: Text(item.label),
-                                      ),
-                                    )
-                                    .toList(),
-                            onChanged: (value) {
-                              if (value == null) return;
-                              setModalState(() => selectedReason = value);
-                            },
-                            decoration: const InputDecoration(
-                              labelText: 'Reason',
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          TextField(
-                            controller: noteCtrl,
-                            maxLength: 280,
-                            minLines: 1,
-                            maxLines: 3,
-                            decoration: const InputDecoration(
-                              labelText: 'Additional details (optional)',
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          FilledButton(
-                            onPressed: () {
-                              Navigator.of(ctx).pop(
-                                _CancelTripRequest(
-                                  reasonCode: selectedReason,
-                                  note: noteCtrl.text,
-                                ),
-                              );
-                            },
-                            child: const Text('Confirm cancellation'),
-                          ),
-                          const SizedBox(height: 6),
-                          TextButton(
-                            onPressed: () => Navigator.of(ctx).pop(),
-                            child: const Text('Keep trip'),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            },
-          );
-        },
-      );
-    } finally {
-      noteCtrl.dispose();
-    }
-  }
-
-  void _showBottomMessage(String message) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
-      );
-  }
-
   String _statusLabel(String status) {
-    switch (status) {
-      case 'requested':
-        return 'Waiting for driver';
-      case 'accepted':
-        return 'Driver accepted';
-      case 'driver_arriving':
-        return 'Driver arriving';
-      case 'in_progress':
-        return 'Ride in progress';
-      case 'completed':
-        return 'Completed';
-      case 'cancelled':
-        return 'Cancelled';
-      default:
-        return status.replaceAll('_', ' ');
-    }
+    return DrivepalBookingStatusTheme.fromStatus(status).riderLabel;
   }
 
   String _driverStatusLabel(String status) {
-    switch (status) {
-      case 'requested':
-        return 'No driver yet';
-      case 'accepted':
-        return 'Driver assigned';
-      case 'driver_arriving':
-        return 'Driver arriving';
-      case 'in_progress':
-        return 'With driver';
-      case 'completed':
-        return 'Trip finished';
-      case 'cancelled':
-        return 'Trip cancelled';
-      default:
-        return status.replaceAll('_', ' ');
-    }
-  }
-
-  IconData _statusIcon(String status) {
-    switch (status) {
-      case 'accepted':
-      case 'driver_arriving':
-        return Icons.local_taxi_rounded;
-      case 'in_progress':
-        return Icons.route_rounded;
-      case 'completed':
-        return Icons.check_circle_rounded;
-      case 'cancelled':
-        return Icons.cancel_rounded;
-      default:
-        return Icons.schedule_rounded;
-    }
-  }
-
-  Color _statusAccentColor(String status) {
-    return status == 'cancelled'
-        ? DrivepalTokens.textDanger
-        : DrivepalTokens.bgPrimary;
-  }
-
-  Color _statusSurfaceColor(String status) {
-    return status == 'cancelled'
-        ? DrivepalTokens.dangerSoftBg
-        : DrivepalTokens.bgPrimary.withValues(alpha: 0.1);
+    return DrivepalBookingStatusTheme.fromStatus(status).riderDriverLineLabel;
   }
 
   String _routeFacts(BookingHistoryItem trip) {
@@ -320,6 +104,7 @@ class _TravelHistoryScreenState extends State<TravelHistoryScreen> {
   }
 
   Widget _tripCard(BuildContext context, BookingHistoryItem trip) {
+    final statusVisual = DrivepalBookingStatusTheme.fromStatus(trip.status);
     final tt = Theme.of(context).textTheme;
     final routeTextBase = tt.bodyMedium?.copyWith(
       fontWeight: FontWeight.w600,
@@ -335,7 +120,7 @@ class _TravelHistoryScreenState extends State<TravelHistoryScreen> {
                 '${requestedAt.hour.toString().padLeft(2, '0')}:'
                 '${requestedAt.minute.toString().padLeft(2, '0')}';
 
-    return DrivepalElevatedPanel(
+    final card = DrivepalElevatedPanel(
       padding: EdgeInsets.zero,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -349,12 +134,12 @@ class _TravelHistoryScreenState extends State<TravelHistoryScreen> {
                   height: 30,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: _statusSurfaceColor(trip.status),
+                    color: statusVisual.surfaceColor,
                   ),
                   child: Icon(
-                    _statusIcon(trip.status),
+                    statusVisual.icon,
                     size: 16,
-                    color: _statusAccentColor(trip.status),
+                    color: statusVisual.accentColor,
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -365,10 +150,7 @@ class _TravelHistoryScreenState extends State<TravelHistoryScreen> {
                       Text(
                         _statusLabel(trip.status),
                         style: tt.titleSmall?.copyWith(
-                          color:
-                              trip.status == 'cancelled'
-                                  ? DrivepalTokens.textDanger
-                                  : DrivepalTokens.textHeading,
+                          color: statusVisual.accentColor,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
@@ -499,32 +281,16 @@ class _TravelHistoryScreenState extends State<TravelHistoryScreen> {
                     ),
                   ],
                 ),
-                if (trip.canCancel) ...[
-                  const SizedBox(height: 8),
-                  Align(
-                    alignment: Alignment.center,
-                    child: GestureDetector(
-                      onTap:
-                          _cancellingTripIds.contains(trip.id)
-                              ? null
-                              : () => _onTapCancelTrip(trip),
-                      child: Text(
-                        _cancellingTripIds.contains(trip.id)
-                            ? 'Cancelling...'
-                            : 'Tap to cancel',
-                        style: tt.bodySmall?.copyWith(
-                          color: DrivepalTokens.textDanger,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
               ],
             ),
           ),
         ],
       ),
+    );
+    return InkWell(
+      borderRadius: BorderRadius.circular(DrivepalTokens.radiusCard),
+      onTap: () => context.push('/customer/active-trip/${trip.id}'),
+      child: card,
     );
   }
 
@@ -624,18 +390,4 @@ class _TravelHistoryScreenState extends State<TravelHistoryScreen> {
       ],
     );
   }
-}
-
-class _CancelReasonOption {
-  const _CancelReasonOption(this.code, this.label);
-
-  final String code;
-  final String label;
-}
-
-class _CancelTripRequest {
-  const _CancelTripRequest({required this.reasonCode, this.note});
-
-  final String reasonCode;
-  final String? note;
 }

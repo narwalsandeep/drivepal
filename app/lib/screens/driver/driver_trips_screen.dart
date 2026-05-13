@@ -6,6 +6,7 @@ import '../../services/auth_session.dart';
 import '../../services/booking_api.dart';
 import '../../services/driver_tab_refresh_notifier.dart';
 import '../../theme/drivepal_app_shell_copy.dart';
+import '../../theme/drivepal_booking_status_theme.dart';
 import '../../theme/drivepal_tokens.dart';
 import '../../widgets/common/drivepal_location_icon.dart';
 import '../../widgets/drivepal_shell_layout.dart';
@@ -94,57 +95,8 @@ class _DriverTripsScreenState extends State<DriverTripsScreen> {
     }
   }
 
-  IconData _statusIcon(String status) {
-    switch (status) {
-      case 'accepted':
-      case 'driver_arriving':
-        return Icons.local_taxi_rounded;
-      case 'in_progress':
-        return Icons.route_rounded;
-      case 'completed':
-        return Icons.check_circle_rounded;
-      case 'cancelled':
-        return Icons.cancel_rounded;
-      default:
-        return Icons.schedule_rounded;
-    }
-  }
-
-  Color _statusColor(String status) {
-    if (status == 'completed') {
-      return DrivepalTokens.locationDropoff;
-    }
-    return status == 'cancelled'
-        ? DrivepalTokens.textDanger
-        : DrivepalTokens.bgPrimary;
-  }
-
-  Color _statusSurfaceColor(String status) {
-    if (status == 'completed') {
-      return DrivepalTokens.locationGreenSoftBg;
-    }
-    return status == 'cancelled'
-        ? DrivepalTokens.dangerSoftBg
-        : DrivepalTokens.bgPrimary.withValues(alpha: 0.1);
-  }
-
   String _statusLabel(String status) {
-    switch (status) {
-      case 'requested':
-        return 'Requested';
-      case 'accepted':
-        return 'Accepted';
-      case 'driver_arriving':
-        return 'Driver arriving';
-      case 'in_progress':
-        return 'In progress';
-      case 'completed':
-        return 'Completed';
-      case 'cancelled':
-        return 'Cancelled';
-      default:
-        return status.replaceAll('_', ' ');
-    }
+    return DrivepalBookingStatusTheme.fromStatus(status).driverLabel;
   }
 
   String _routeFacts(BookingHistoryItem item) {
@@ -163,6 +115,7 @@ class _DriverTripsScreenState extends State<DriverTripsScreen> {
   }
 
   Widget _tripCard(BuildContext context, BookingHistoryItem item) {
+    final statusVisual = DrivepalBookingStatusTheme.fromStatus(item.status);
     final tt = Theme.of(context).textTheme;
     final requestedAt = item.requestedAt;
     final requestedAtText =
@@ -187,12 +140,12 @@ class _DriverTripsScreenState extends State<DriverTripsScreen> {
                   height: 30,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: _statusSurfaceColor(item.status),
+                    color: statusVisual.surfaceColor,
                   ),
                   child: Icon(
-                    _statusIcon(item.status),
+                    statusVisual.icon,
                     size: 16,
-                    color: _statusColor(item.status),
+                    color: statusVisual.accentColor,
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -200,7 +153,7 @@ class _DriverTripsScreenState extends State<DriverTripsScreen> {
                   child: Text(
                     _statusLabel(item.status),
                     style: tt.titleSmall?.copyWith(
-                      color: _statusColor(item.status),
+                      color: statusVisual.accentColor,
                       fontWeight: FontWeight.w700,
                     ),
                   ),

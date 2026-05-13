@@ -11,6 +11,7 @@ import { DriverCar } from '../driver-cars/entities/driver-car.entity';
 import { PaymentAttempt } from '../payments/entities/payment-attempt.entity';
 import { DriverTripEarning } from './entities/driver-trip-earning.entity';
 import { RideBooking } from './entities/ride-booking.entity';
+import { RideBookingDriverLocation } from './entities/ride-booking-driver-location.entity';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { RideBooking } from './entities/ride-booking.entity';
       DriverCar,
       PaymentAttempt,
       DriverTripEarning,
+      RideBookingDriverLocation,
     ]),
   ],
   controllers: [BookingsController],

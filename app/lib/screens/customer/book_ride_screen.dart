@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:google_maps_flutter_platform_interface/google_maps_flutter_platform_interface.dart'
     as gmaps_pi;
@@ -592,7 +593,7 @@ class _BookRideScreenState extends State<BookRideScreen> {
                   .add(Duration(minutes: selectedMinutes))
                   .toUtc()
                   .toIso8601String();
-      await _bookingApi.createRideBooking({
+      final created = await _bookingApi.createRideBooking({
         'pickup': {
           'address': pickupAddress,
           'latitude': pick.latitude,
@@ -619,12 +620,18 @@ class _BookRideScreenState extends State<BookRideScreen> {
         },
         if (scheduledFor != null) 'scheduledFor': scheduledFor,
       }, bearerToken: token);
+      final bookingRaw = created['booking'];
+      final bookingId =
+          bookingRaw is Map<String, dynamic> ? bookingRaw['id'] as String? : null;
       if (!mounted) return;
       _dismissPaymentProgressModal();
       _showBottomMessage('Ride request sent. We will notify you soon.');
       await _showFinishBookingDialog();
       if (!mounted) return;
       _resetBookingDraftAfterFinish();
+      if (bookingId != null && bookingId.trim().isNotEmpty) {
+        context.push('/customer/active-trip/${bookingId.trim()}');
+      }
     } on AuthApiException catch (e) {
       if (!mounted) return;
       _dismissPaymentProgressModal();

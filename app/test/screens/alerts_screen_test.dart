@@ -6,6 +6,7 @@ import 'package:drivepal_app/screens/customer/alerts_screen.dart';
 import 'package:drivepal_app/services/alerts_unread_monitor.dart';
 import 'package:drivepal_app/services/auth_session.dart';
 import 'package:drivepal_app/services/customer_tab_refresh_notifier.dart';
+import 'package:drivepal_app/services/driver_tab_refresh_notifier.dart';
 import 'package:drivepal_app/services/notifications_api.dart';
 import 'package:drivepal_app/theme/drivepal_theme.dart';
 
@@ -67,6 +68,9 @@ void main() {
           ChangeNotifierProvider<CustomerTabRefreshNotifier>(
             create: (_) => CustomerTabRefreshNotifier(),
           ),
+          ChangeNotifierProvider<DriverTabRefreshNotifier>(
+            create: (_) => DriverTabRefreshNotifier(),
+          ),
         ],
         child: MaterialApp(
           theme: buildDrivepalTheme(),
@@ -105,6 +109,9 @@ void main() {
           ),
           ChangeNotifierProvider<CustomerTabRefreshNotifier>(
             create: (_) => CustomerTabRefreshNotifier(),
+          ),
+          ChangeNotifierProvider<DriverTabRefreshNotifier>(
+            create: (_) => DriverTabRefreshNotifier(),
           ),
         ],
         child: MaterialApp(

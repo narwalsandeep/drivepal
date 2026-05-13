@@ -89,6 +89,22 @@ abstract final class DrivepalTokens {
   /// `--drivepal-text-info` (teal-600)
   static const Color textInfo = brandPrimary;
 
+  // ——— Booking status semantics (Tailwind palette) ———
+  static const Color statusRequested = Color(0xFFD97706); // amber-600
+  static const Color statusRequestedSoftBg = Color(0xFFFEF3C7); // amber-100
+
+  static const Color statusAccepted = Color(0xFF2563EB); // blue-600
+  static const Color statusAcceptedSoftBg = Color(0xFFDBEAFE); // blue-100
+
+  static const Color statusArriving = Color(0xFF7C3AED); // violet-600
+  static const Color statusArrivingSoftBg = Color(0xFFEDE9FE); // violet-100
+
+  static const Color statusInProgress = Color(0xFF0284C7); // sky-600
+  static const Color statusInProgressSoftBg = Color(0xFFE0F2FE); // sky-100
+
+  static const Color statusCompleted = Color(0xFF059669); // emerald-600
+  static const Color statusCompletedSoftBg = Color(0xFFD1FAE5); // emerald-100
+
   // ——— Location semantics ———
   /// Pickup marker/icon color (neutral dark gray).
   static const Color locationPickup = Color(0xFF374151);

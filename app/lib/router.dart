@@ -8,6 +8,7 @@ import 'package:drivepal_app/screens/customer/alerts_screen.dart';
 import 'package:drivepal_app/screens/customer/customer_shell_screen.dart';
 import 'package:drivepal_app/screens/customer/payment_methods_screen.dart';
 import 'package:drivepal_app/screens/customer/rider_profile_screen.dart';
+import 'package:drivepal_app/screens/customer/rider_active_trip_screen.dart';
 import 'package:drivepal_app/screens/customer/travel_history_screen.dart';
 import 'package:drivepal_app/screens/edit_profile_screen.dart';
 import 'package:drivepal_app/screens/driver/driver_new_requests_screen.dart';
@@ -136,6 +137,13 @@ GoRouter buildDrivepalRouter(AuthSession auth) {
             path: 'payment',
             parentNavigatorKey: drivepalRootNavigatorKey,
             builder: (context, state) => const PaymentMethodsScreen(),
+          ),
+          GoRoute(
+            path: 'active-trip/:bookingId',
+            parentNavigatorKey: drivepalRootNavigatorKey,
+            builder: (context, state) => RiderActiveTripScreen(
+              bookingId: state.pathParameters['bookingId'] ?? '',
+            ),
           ),
           GoRoute(
             path: 'edit-profile',
