@@ -49,6 +49,23 @@ chargedMinor = round(finalFare * 100)
 
 This split keeps the project scalable: product teams tune pricing from env, while developers preserve stable API/app contracts.
 
+## Reliability safeguards
+
+- Runtime hardening is centralized in:
+  - `api/src/main.ts` (security headers + global pipes)
+  - `api/src/app.module.ts` (global throttler guard and config loading)
+  - `api/src/config/env.validation.ts` (fail-fast env validation)
+- API throttling env knobs:
+  - `API_THROTTLE_TTL_SECONDS`
+  - `API_THROTTLE_LIMIT`
+- Security headers toggle:
+  - `SECURITY_HEADERS_ENABLED` (defaults to enabled)
+- Production env guardrails:
+  - require `DATABASE_URL`, `JWT_SECRET`, `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`
+  - reject `TYPEORM_SYNC=true`
+- Polling resilience:
+  - rider active trip and driver request feed use bounded backoff + stale-data messaging for transient API failures.
+
 ## Builds and CI
 
 - **`npm run build`** in `api/` runs **`npm test`** first (`prebuild`), then `nest build`.

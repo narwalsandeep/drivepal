@@ -35,6 +35,7 @@ npm run build
 - Mail: `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM`, `MAIL_NAME`, `ADMIN_EMAIL`
 - Stripe: `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`
 - Data: `DATABASE_URL`, `TYPEORM_SYNC`, `TYPEORM_MIGRATIONS_RUN`
+- Reliability: `SECURITY_HEADERS_ENABLED`, `API_THROTTLE_TTL_SECONDS`, `API_THROTTLE_LIMIT`
 
 ## Fare engine
 
@@ -61,6 +62,12 @@ Configurable knobs:
 - `FARE_SURGE_MULTIPLIER`
 
 Per-car base distance rates are defined in `src/bookings/constants/car-options.constant.ts`.
+
+## Runtime reliability safeguards
+
+- Security headers: enabled by default via `helmet` (`SECURITY_HEADERS_ENABLED` to disable explicitly).
+- Global throttling: controlled by `API_THROTTLE_TTL_SECONDS` and `API_THROTTLE_LIMIT`.
+- Environment validation: startup fails fast on invalid env formats, missing production-critical secrets, or `TYPEORM_SYNC=true` in production.
 
 ## Migrations
 

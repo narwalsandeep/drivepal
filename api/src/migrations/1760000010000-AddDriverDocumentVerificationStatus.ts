@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddDriverDocumentVerificationStatus1760000010000
-  implements MigrationInterface
-{
+export class AddDriverDocumentVerificationStatus1760000010000 implements MigrationInterface {
   name = 'AddDriverDocumentVerificationStatus1760000010000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

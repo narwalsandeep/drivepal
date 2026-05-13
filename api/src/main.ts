@@ -1,6 +1,7 @@
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import helmet from 'helmet';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -11,6 +12,8 @@ async function bootstrap() {
   const nodeEnv = config.get<string>('NODE_ENV') ?? process.env.NODE_ENV;
   const isProduction = nodeEnv === 'production';
   const corsRelaxed = config.get<string>('CORS_RELAXED') !== 'false';
+  const securityHeadersEnabled =
+    config.get<string>('SECURITY_HEADERS_ENABLED') !== 'false';
 
   /** Flutter web uses a random port; fixed lists miss it unless we reflect Origin. */
   const staticCorsOrigins = [
@@ -44,6 +47,16 @@ async function bootstrap() {
     }),
   );
 
+  if (securityHeadersEnabled) {
+    app.use(
+      helmet({
+        // Keep this disabled for local/web map integrations that rely on inline scripts.
+        contentSecurityPolicy: isProduction ? undefined : false,
+        crossOriginEmbedderPolicy: false,
+      }),
+    );
+  }
+
   await app.listen(port, '0.0.0.0');
 }
-bootstrap();
+void bootstrap();

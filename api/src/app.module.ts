@@ -1,8 +1,11 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from './auth/auth.module';
 import { BookingsModule } from './bookings/bookings.module';
+import { validateEnvironment } from './config/env.validation';
 import { DriverCarsModule } from './driver-cars/driver-cars.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PaymentsModule } from './payments/payments.module';
@@ -15,6 +18,23 @@ import { HealthController } from './health/health.controller';
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: ['.env.local', '.env', '../.env'],
+      validate: validateEnvironment,
+    }),
+    ThrottlerModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => {
+        const ttlSeconds = Number.parseInt(
+          config.get<string>('API_THROTTLE_TTL_SECONDS') ?? '60',
+          10,
+        );
+        const limit = Number.parseInt(
+          config.get<string>('API_THROTTLE_LIMIT') ?? '120',
+          10,
+        );
+
+        return [{ ttl: ttlSeconds * 1000, limit }];
+      },
     }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
@@ -38,6 +58,12 @@ import { HealthController } from './health/health.controller';
     PaymentsModule,
   ],
   controllers: [AppController, HealthController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+  ],
 })
 export class AppModule {}

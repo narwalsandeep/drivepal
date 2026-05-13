@@ -57,6 +57,11 @@ class _DriverNewRequestsScreenState extends State<DriverNewRequestsScreen>
   Timer? _requestFeedTimer;
   String? _trackingBookingId;
   bool _postingDriverLocation = false;
+  bool _requestPollInFlight = false;
+  int _requestPollFailures = 0;
+  String? _requestFeedWarning;
+
+  static const Duration _maxRequestFeedRetryInterval = Duration(seconds: 72);
 
   @override
   void initState() {
@@ -116,7 +121,7 @@ class _DriverNewRequestsScreenState extends State<DriverNewRequestsScreen>
     }
   }
 
-  Future<void> _load({bool silent = false}) async {
+  Future<void> _load({bool silent = false, bool fromPoll = false}) async {
     if (!silent || (_activeTrip == null && _openItems.isEmpty)) {
       setState(() {
         _loading = true;
@@ -162,6 +167,8 @@ class _DriverNewRequestsScreenState extends State<DriverNewRequestsScreen>
       setState(() {
         _openItems = rows;
         _activeTrip = active.id.isEmpty ? null : active;
+        _requestFeedWarning = null;
+        _requestPollFailures = 0;
         if (_selectedIndex >= rows.length) {
           _selectedIndex = rows.isEmpty ? 0 : rows.length - 1;
         }
@@ -170,23 +177,74 @@ class _DriverNewRequestsScreenState extends State<DriverNewRequestsScreen>
       _syncDriverLocationLoop();
     } on AuthApiException catch (e) {
       if (!mounted) return;
+      final hasVisibleData = _activeTrip != null || _openItems.isNotEmpty;
       setState(() {
         _loading = false;
-        _error = e.message;
+        _requestPollFailures += 1;
+        if (fromPoll) {
+          _error = hasVisibleData ? null : e.message;
+          _requestFeedWarning = _buildRequestFeedWarningMessage();
+        } else {
+          _error = e.message;
+          _requestFeedWarning = null;
+        }
       });
       _stopDriverLocationLoop();
+    } catch (_) {
+      if (!mounted) return;
+      final hasVisibleData = _activeTrip != null || _openItems.isNotEmpty;
+      setState(() {
+        _loading = false;
+        _requestPollFailures += 1;
+        if (fromPoll) {
+          _error = hasVisibleData ? null : 'Could not refresh requests right now.';
+          _requestFeedWarning = _buildRequestFeedWarningMessage();
+        } else {
+          _error = 'Could not refresh requests right now.';
+          _requestFeedWarning = null;
+        }
+      });
     }
+  }
+
+  Duration _nextRequestFeedDelay() {
+    if (_requestPollFailures <= 0) {
+      return widget.requestFeedRefreshInterval;
+    }
+    final multiplier = 1 << (_requestPollFailures - 1);
+    final nextSeconds = widget.requestFeedRefreshInterval.inSeconds * multiplier;
+    final clamped = nextSeconds.clamp(
+      widget.requestFeedRefreshInterval.inSeconds,
+      _maxRequestFeedRetryInterval.inSeconds,
+    );
+    return Duration(seconds: clamped);
+  }
+
+  String _buildRequestFeedWarningMessage() {
+    final retryInSeconds = _nextRequestFeedDelay().inSeconds;
+    return 'Live request updates are delayed. Retrying in about $retryInSeconds seconds.';
   }
 
   void _startRequestFeedPolling() {
     _requestFeedTimer?.cancel();
-    _requestFeedTimer = Timer.periodic(
-      widget.requestFeedRefreshInterval,
-      (_) {
-        if (!mounted || _loading || _actionBusy) return;
-        _load(silent: true);
-      },
-    );
+    _requestFeedTimer = Timer(_nextRequestFeedDelay(), _runRequestFeedPollingTick);
+  }
+
+  Future<void> _runRequestFeedPollingTick() async {
+    if (!mounted) return;
+    if (_requestPollInFlight || _loading || _actionBusy) {
+      _startRequestFeedPolling();
+      return;
+    }
+    _requestPollInFlight = true;
+    try {
+      await _load(silent: true, fromPoll: true);
+    } finally {
+      _requestPollInFlight = false;
+      if (mounted) {
+        _startRequestFeedPolling();
+      }
+    }
   }
 
   void _stopRequestFeedPolling() {
@@ -459,14 +517,16 @@ class _DriverNewRequestsScreenState extends State<DriverNewRequestsScreen>
           return;
         }
         pos = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.bestForNavigation,
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.bestForNavigation,
+          ),
         );
       }
       await _bookingApi.updateDriverLocation(
         bookingId: bookingId,
-        latitude: pos!.latitude,
-        longitude: pos!.longitude,
-        accuracyMeters: pos!.accuracy,
+        latitude: pos.latitude,
+        longitude: pos.longitude,
+        accuracyMeters: pos.accuracy,
         bearerToken: token,
       );
     } catch (_) {
@@ -533,6 +593,19 @@ class _DriverNewRequestsScreenState extends State<DriverNewRequestsScreen>
                         ),
                       ),
                     ),
+                  if (_requestFeedWarning != null)
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      top: _error != null ? 34 : 8,
+                      child: Text(
+                        _requestFeedWarning!,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: DrivepalTokens.textMuted,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
                   Positioned(
                     left: 0,
                     right: 0,
@@ -580,6 +653,17 @@ class _DriverNewRequestsScreenState extends State<DriverNewRequestsScreen>
                 _error!,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: DrivepalTokens.textDanger,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          if (_requestFeedWarning != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(
+                _requestFeedWarning!,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: DrivepalTokens.textMuted,
                   fontWeight: FontWeight.w700,
                 ),
               ),

@@ -178,7 +178,9 @@ describe('AuthService', () => {
       driverDlImageBase64: 'olddl',
       driverDocumentStatus: 'approved',
     });
-    users.save.mockImplementation(async (input: Record<string, unknown>) => input);
+    users.save.mockImplementation(
+      async (input: Record<string, unknown>) => input,
+    );
 
     await service.updateAuthenticatedDriverProfile('Bearer token', {
       driverProfilePhotoBase64: 'bmV3LXByb2ZpbGU=',

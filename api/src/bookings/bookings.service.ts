@@ -368,7 +368,9 @@ export class BookingsService {
           );
 
     return {
-      earnings: rows.map((row) => this.toDriverEarningResponse(row, bookingsById)),
+      earnings: rows.map((row) =>
+        this.toDriverEarningResponse(row, bookingsById),
+      ),
     };
   }
 
@@ -970,8 +972,11 @@ export class BookingsService {
     const fareModel = this.getFareModelConfig();
     const distanceFare = distanceKm * pricePerKmGbp * fareModel.perKmMultiplier;
     const timeFare = durationMinutes * fareModel.perMinuteRateGbp;
-    const scheduledSurcharge = isScheduled ? fareModel.scheduledSurchargeGbp : 0;
-    const subtotal = fareModel.baseFareGbp + distanceFare + timeFare + scheduledSurcharge;
+    const scheduledSurcharge = isScheduled
+      ? fareModel.scheduledSurchargeGbp
+      : 0;
+    const subtotal =
+      fareModel.baseFareGbp + distanceFare + timeFare + scheduledSurcharge;
     const surged = subtotal * fareModel.surgeMultiplier;
     const fareGbp = Math.max(fareModel.minFareGbp, surged);
     const amountMinor = Math.round(fareGbp * 100);

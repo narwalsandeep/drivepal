@@ -28,6 +28,7 @@ If everything works on the first `docker compose up --build`, please open an iss
 - [Quick Start](#quick-start)
 - [Configuration](#configuration)
 - [Fare Model](#fare-model)
+- [Reliability Hardening](#reliability-hardening)
 - [Testing and Coverage](#testing-and-coverage)
 - [Open Source Health](#open-source-health)
 - [Documentation](#documentation)
@@ -41,6 +42,13 @@ If everything works on the first `docker compose up --build`, please open an iss
 - Stripe card setup and booking charge flow.
 - Google Maps route preview and Directions API proxying.
 - Driver cars, request matching, scheduled rides, and earnings.
+
+### Why It Feels Production-Ready
+
+- End-to-end ride lifecycle with explicit status transitions and guardrails.
+- Payments with charge tracking and cancellation refund correctness checks.
+- Built-in reliability posture: validation, throttling, secure headers, and retry-aware client UX.
+- Open-source contributor ergonomics: Docker-first setup, clear docs, strict tests, and coverage gates.
 
 ## Stack
 
@@ -238,6 +246,7 @@ Important settings:
 | Mail | `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM`, `MAIL_NAME` |
 | Stripe | `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY` |
 | Fare model | `FARE_BASE_GBP`, `FARE_PER_KM_MULTIPLIER`, `FARE_PER_MINUTE_GBP`, `FARE_MIN_GBP`, `FARE_SCHEDULED_SURCHARGE_GBP`, `FARE_SURGE_MULTIPLIER` |
+| Reliability | `SECURITY_HEADERS_ENABLED`, `API_THROTTLE_TTL_SECONDS`, `API_THROTTLE_LIMIT` |
 | Maps | `GOOGLE_MAPS_API_KEY` |
 | TypeORM | `TYPEORM_SYNC`, `TYPEORM_MIGRATIONS_RUN` |
 | Ports | `POSTGRES_PORT`, `PGADMIN_PORT`, `API_PORT`, `UI_PORT` |
@@ -295,12 +304,31 @@ FARE_SURGE_MULTIPLIER=1.25
 
 This design keeps scaling simple: adjust business pricing policy in env, while keeping code and client contracts stable.
 
+## Reliability Hardening
+
+The API now includes baseline runtime safeguards designed for open-source production deployments:
+
+- Security headers via `helmet` (enabled by default, controlled by `SECURITY_HEADERS_ENABLED`).
+- Global API throttling through Nest throttler:
+  - `API_THROTTLE_TTL_SECONDS` (window size, default `60`)
+  - `API_THROTTLE_LIMIT` (requests per window, default `120`)
+- Strict environment validation at startup:
+  - validates boolean/number env formats,
+  - requires critical secrets in production (`DATABASE_URL`, `JWT_SECRET`, Stripe keys),
+  - rejects `TYPEORM_SYNC=true` in production.
+
+Flutter reliability hardening in active polling views:
+
+- Rider active-trip and driver new-request screens use bounded retry/backoff for transient failures.
+- Existing trip/request content remains visible during temporary API failures, with clear in-app delayed-update messaging.
+
 ## Testing and Coverage
 
 Run tests locally:
 
 ```bash
 npm run test:api
+npm run test:e2e --prefix api
 npm run test:ui
 npm run test:app
 ```
@@ -341,6 +369,12 @@ This repo includes the files GitHub users expect on public projects:
 - Pull request template: `.github/pull_request_template.md`
 - Bug and feature issue templates: `.github/ISSUE_TEMPLATE/`
 - CI workflow: `.github/workflows/ci.yml`
+
+Open-source maintainer friendly by default:
+
+- Reliable local onboarding (`docker compose up --build` + Flutter host run).
+- Clear configuration examples with sane defaults and explicit production constraints.
+- Testable architecture with unit/e2e/widget coverage across backend and app flows.
 
 Recommended GitHub settings after publishing:
 

@@ -37,7 +37,13 @@ class _RiderActiveTripScreenState extends State<RiderActiveTripScreen> {
   bool _loading = true;
   bool _cancelling = false;
   String? _error;
+  String? _pollWarning;
   Timer? _pollTimer;
+  int _consecutivePollFailures = 0;
+  bool _pollInFlight = false;
+
+  static const Duration _basePollInterval = Duration(seconds: 6);
+  static const Duration _maxPollInterval = Duration(seconds: 36);
 
   static const List<_CancelReasonOption> _cancelReasonOptions = [
     _CancelReasonOption('change_of_plans', 'Change of plans'),
@@ -52,10 +58,7 @@ class _RiderActiveTripScreenState extends State<RiderActiveTripScreen> {
   void initState() {
     super.initState();
     _loadTracking(showLoader: true);
-    _pollTimer = Timer.periodic(
-      const Duration(seconds: 6),
-      (_) => _loadTracking(showLoader: false),
-    );
+    _scheduleNextPoll();
   }
 
   @override
@@ -64,7 +67,45 @@ class _RiderActiveTripScreenState extends State<RiderActiveTripScreen> {
     super.dispose();
   }
 
-  Future<void> _loadTracking({required bool showLoader}) async {
+  Duration _nextPollDelay() {
+    if (_consecutivePollFailures <= 0) {
+      return _basePollInterval;
+    }
+    final multiplier = 1 << (_consecutivePollFailures - 1);
+    final nextSeconds = _basePollInterval.inSeconds * multiplier;
+    final clamped = nextSeconds.clamp(
+      _basePollInterval.inSeconds,
+      _maxPollInterval.inSeconds,
+    );
+    return Duration(seconds: clamped);
+  }
+
+  void _scheduleNextPoll() {
+    _pollTimer?.cancel();
+    _pollTimer = Timer(_nextPollDelay(), _runPollingTick);
+  }
+
+  Future<void> _runPollingTick() async {
+    if (!mounted) return;
+    if (_pollInFlight) {
+      _scheduleNextPoll();
+      return;
+    }
+    _pollInFlight = true;
+    try {
+      await _loadTracking(showLoader: false, fromPoll: true);
+    } finally {
+      _pollInFlight = false;
+      if (mounted) {
+        _scheduleNextPoll();
+      }
+    }
+  }
+
+  Future<void> _loadTracking({
+    required bool showLoader,
+    bool fromPoll = false,
+  }) async {
     if (showLoader && mounted) {
       setState(() {
         _loading = true;
@@ -90,21 +131,46 @@ class _RiderActiveTripScreenState extends State<RiderActiveTripScreen> {
         _snapshot = snapshot;
         _loading = false;
         _error = null;
+        _pollWarning = null;
+        _consecutivePollFailures = 0;
       });
       _syncRoutePolyline(snapshot.booking);
     } on AuthApiException catch (e) {
       if (!mounted) return;
+      final hasExistingSnapshot = _snapshot != null;
+      final shouldShowStaleState = fromPoll && hasExistingSnapshot;
       setState(() {
         _loading = false;
-        _error = e.message;
+        _consecutivePollFailures += 1;
+        if (shouldShowStaleState) {
+          _error = null;
+          _pollWarning = _buildDelayedUpdatesMessage();
+        } else {
+          _error = e.message;
+          _pollWarning = null;
+        }
       });
     } catch (_) {
       if (!mounted) return;
+      final hasExistingSnapshot = _snapshot != null;
+      final shouldShowStaleState = fromPoll && hasExistingSnapshot;
       setState(() {
         _loading = false;
-        _error = 'Could not refresh tracking right now.';
+        _consecutivePollFailures += 1;
+        if (shouldShowStaleState) {
+          _error = null;
+          _pollWarning = _buildDelayedUpdatesMessage();
+        } else {
+          _error = 'Could not refresh tracking right now.';
+          _pollWarning = null;
+        }
       });
     }
+  }
+
+  String _buildDelayedUpdatesMessage() {
+    final retryInSeconds = _nextPollDelay().inSeconds;
+    return 'Live updates are delayed. We will retry in about $retryInSeconds seconds.';
   }
 
   String _statusLabel(String status) {
@@ -498,6 +564,17 @@ class _RiderActiveTripScreenState extends State<RiderActiveTripScreen> {
                                   '${snapshot.driverLocation!.recordedAt!.minute.toString().padLeft(2, '0')}',
                                   style: Theme.of(context).textTheme.bodySmall
                                       ?.copyWith(color: DrivepalTokens.textMuted),
+                                ),
+                              ],
+                              if (_pollWarning != null) ...[
+                                const SizedBox(height: 10),
+                                Text(
+                                  _pollWarning!,
+                                  style: Theme.of(context).textTheme.bodySmall
+                                      ?.copyWith(
+                                        color: DrivepalTokens.textMuted,
+                                        fontWeight: FontWeight.w600,
+                                      ),
                                 ),
                               ],
                             ],

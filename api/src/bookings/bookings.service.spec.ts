@@ -172,8 +172,14 @@ describe('BookingsService', () => {
       providers: [
         BookingsService,
         { provide: getRepositoryToken(RideBooking), useValue: bookings },
-        { provide: getRepositoryToken(PaymentAttempt), useValue: paymentAttempts },
-        { provide: getRepositoryToken(DriverTripEarning), useValue: tripEarnings },
+        {
+          provide: getRepositoryToken(PaymentAttempt),
+          useValue: paymentAttempts,
+        },
+        {
+          provide: getRepositoryToken(DriverTripEarning),
+          useValue: tripEarnings,
+        },
         {
           provide: getRepositoryToken(RideBookingDriverLocation),
           useValue: rideBookingDriverLocations,
@@ -855,7 +861,9 @@ describe('BookingsService', () => {
       } as RideBooking,
     ]);
 
-    const res = await service.listEarningsForDriver('Bearer token', { limit: 20 });
+    const res = await service.listEarningsForDriver('Bearer token', {
+      limit: 20,
+    });
 
     expect(tripEarnings.find).toHaveBeenCalledWith({
       where: { driverId: 'driver-1' },
@@ -959,11 +967,15 @@ describe('BookingsService', () => {
     });
     rideBookingDriverLocations.findOne?.mockResolvedValueOnce(null);
 
-    const res = await service.updateDriverLocation('Bearer token', 'booking-track-1', {
-      latitude: 51.5,
-      longitude: -0.12,
-      accuracyMeters: 14,
-    });
+    const res = await service.updateDriverLocation(
+      'Bearer token',
+      'booking-track-1',
+      {
+        latitude: 51.5,
+        longitude: -0.12,
+        accuracyMeters: 14,
+      },
+    );
 
     expect(rideBookingDriverLocations.save).toHaveBeenCalledWith(
       expect.objectContaining({
