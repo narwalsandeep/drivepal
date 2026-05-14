@@ -1,5 +1,7 @@
 import {
+  Body,
   Controller,
+  Delete,
   Get,
   Headers,
   HttpCode,
@@ -7,9 +9,14 @@ import {
   Param,
   ParseUUIDPipe,
   Patch,
+  Post,
   Query,
 } from '@nestjs/common';
 import { ListNotificationsQueryDto } from './dto/list-notifications-query.dto';
+import {
+  RegisterPushDeviceDto,
+  UnregisterPushDeviceDto,
+} from './dto/push-device.dto';
 import { NotificationsService } from './notifications.service';
 
 @Controller('notifications')
@@ -32,5 +39,32 @@ export class NotificationsController {
     @Param('notificationId', ParseUUIDPipe) notificationId: string,
   ) {
     return this.notifications.markRead(authorization, notificationId);
+  }
+
+  @Post('devices/register')
+  @HttpCode(HttpStatus.OK)
+  registerDevice(
+    @Headers('authorization') authorization: string | undefined,
+    @Body() dto: RegisterPushDeviceDto,
+  ) {
+    return this.notifications.registerPushDevice(authorization, dto);
+  }
+
+  @Delete('devices/:deviceId')
+  @HttpCode(HttpStatus.OK)
+  unregisterDeviceById(
+    @Headers('authorization') authorization: string | undefined,
+    @Param('deviceId', ParseUUIDPipe) deviceId: string,
+  ) {
+    return this.notifications.unregisterPushDeviceById(authorization, deviceId);
+  }
+
+  @Post('devices/unregister')
+  @HttpCode(HttpStatus.OK)
+  unregisterDevice(
+    @Headers('authorization') authorization: string | undefined,
+    @Body() dto: UnregisterPushDeviceDto,
+  ) {
+    return this.notifications.unregisterPushDevice(authorization, dto);
   }
 }

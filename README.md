@@ -29,6 +29,7 @@ If everything works on the first `docker compose up --build`, please open an iss
 - [Configuration](#configuration)
 - [Fare Model](#fare-model)
 - [Reliability Hardening](#reliability-hardening)
+- [Push Notifications](#push-notifications)
 - [Testing and Coverage](#testing-and-coverage)
 - [Open Source Health](#open-source-health)
 - [Documentation](#documentation)
@@ -137,6 +138,7 @@ If everything works on the first `docker compose up --build`, please open an iss
 - Unread alert filtering and badge states.
 - Individual mark-as-read.
 - Background unread polling.
+- Push delivery for mobile (SNS) and web (FCM HTTP v1) with polling fallback.
 - Trip acceptance, reassignment, scheduled reminder, started, completed alerts.
 
 ### Admin and Infrastructure
@@ -246,6 +248,7 @@ Important settings:
 | Mail | `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM`, `MAIL_NAME` |
 | Stripe | `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY` |
 | Fare model | `FARE_BASE_GBP`, `FARE_PER_KM_MULTIPLIER`, `FARE_PER_MINUTE_GBP`, `FARE_MIN_GBP`, `FARE_SCHEDULED_SURCHARGE_GBP`, `FARE_SURGE_MULTIPLIER` |
+| Push | `PUSH_ENABLED`, `PUSH_WEB_ENABLED`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SNS_PLATFORM_APPLICATION_ARN_ANDROID`, `AWS_SNS_PLATFORM_APPLICATION_ARN_IOS`, `FCM_WEB_SERVICE_ACCOUNT_JSON` |
 | Reliability | `SECURITY_HEADERS_ENABLED`, `API_THROTTLE_TTL_SECONDS`, `API_THROTTLE_LIMIT` |
 | Maps | `GOOGLE_MAPS_API_KEY` |
 | TypeORM | `TYPEORM_SYNC`, `TYPEORM_MIGRATIONS_RUN` |
@@ -322,6 +325,86 @@ Flutter reliability hardening in active polling views:
 - Rider active-trip and driver new-request screens use bounded retry/backoff for transient failures.
 - Existing trip/request content remains visible during temporary API failures, with clear in-app delayed-update messaging.
 
+## Push Notifications
+
+Push architecture in this repository is platform-aware:
+
+- Android/iOS: API routes notifications to AWS SNS platform endpoints.
+- Web: API sends via FCM HTTP v1 using service-account credentials.
+- App/Web clients register and deactivate device tokens through `/api/notifications/devices/*`.
+- Existing unread polling remains active as fallback.
+
+### 1) Bootstrap AWS SNS by CLI (no console dependency)
+
+```bash
+cp .env.example .env
+aws iam put-user-policy \
+  --user-name drivepal-push-user \
+  --policy-name DrivepalPushPolicy \
+  --policy-document file://scripts/aws/push-iam-policy.json
+
+export AWS_ACCESS_KEY_ID=replace-me
+export AWS_SECRET_ACCESS_KEY=replace-me
+export AWS_REGION=eu-west-2
+export ANDROID_FCM_SERVER_KEY=replace-me
+export IOS_APNS_TEAM_ID=replace-me
+export IOS_APNS_BUNDLE_ID=replace-me
+export IOS_APNS_KEY_ID=replace-me
+export IOS_APNS_PRIVATE_KEY_PATH=/absolute/path/AuthKey_XXXXXX.p8
+./scripts/aws/bootstrap-sns-push.sh
+```
+
+Copy generated ARN values into `.env`:
+
+- `AWS_SNS_PLATFORM_APPLICATION_ARN_ANDROID`
+- `AWS_SNS_PLATFORM_APPLICATION_ARN_IOS`
+
+### 2) API push env
+
+Set in `.env`:
+
+```env
+PUSH_ENABLED=true
+PUSH_WEB_ENABLED=true
+AWS_REGION=eu-west-2
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
+AWS_SNS_PLATFORM_APPLICATION_ARN_ANDROID=arn:aws:sns:...
+AWS_SNS_PLATFORM_APPLICATION_ARN_IOS=arn:aws:sns:...
+FCM_WEB_SERVICE_ACCOUNT_JSON={"type":"service_account","project_id":"...","private_key":"...","client_email":"..."}
+```
+
+The API now validates these values when push flags are enabled.
+
+### 3) Flutter app/web push runtime wiring
+
+Run Flutter with Firebase defines:
+
+```bash
+cd app
+flutter run \
+  --dart-define=PUSH_ENABLED=true \
+  --dart-define=FIREBASE_API_KEY=... \
+  --dart-define=FIREBASE_APP_ID=... \
+  --dart-define=FIREBASE_MESSAGING_SENDER_ID=... \
+  --dart-define=FIREBASE_PROJECT_ID=... \
+  --dart-define=FCM_WEB_VAPID_KEY=...
+```
+
+Web service worker files are included:
+
+- `app/web/firebase-messaging-sw.js`
+- `app/web/firebase-config.js`
+
+Set Firebase web values in `app/web/firebase-config.js` for browser background handling.
+
+### 4) Troubleshooting
+
+- `PUSH_ENABLED=true` but no deliveries: verify SNS ARNs and IAM permission policy first.
+- Web push fails only: validate `FCM_WEB_SERVICE_ACCOUNT_JSON` and `FCM_WEB_VAPID_KEY`.
+- Delivery missing for one device: check `push_devices.last_error` and `is_active` in DB.
+- Transient provider/API outage: app still shows updates via existing polling fallback.
+
 ## Testing and Coverage
 
 Run tests locally:
@@ -388,6 +471,7 @@ Recommended GitHub settings after publishing:
 ## Documentation
 
 - Architecture: `docs/ARCHITECTURE.md`
+- AWS push plan (mobile + web): `docs/PUSH_NOTIFICATIONS_AWS_PLAN.md`
 - API package guide: `api/README.md`
 - Flutter runtime notes: `app/README.md`
 - Contribution workflow: `CONTRIBUTING.md`

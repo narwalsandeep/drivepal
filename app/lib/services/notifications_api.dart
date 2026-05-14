@@ -119,6 +119,47 @@ class NotificationsApi {
     return listMine(bearerToken: bearerToken);
   }
 
+  Future<Map<String, dynamic>> registerPushDevice({
+    required String bearerToken,
+    required String platform,
+    required String deviceToken,
+    String? appVersion,
+    String? deviceLabel,
+  }) async {
+    final decoded = await _requestJson(
+      () => _client.post(
+        _u('/devices/register'),
+        headers: _authHeaders(bearerToken),
+        body: jsonEncode({
+          'platform': platform,
+          'deviceToken': deviceToken,
+          if (appVersion != null && appVersion.trim().isNotEmpty)
+            'appVersion': appVersion.trim(),
+          if (deviceLabel != null && deviceLabel.trim().isNotEmpty)
+            'deviceLabel': deviceLabel.trim(),
+        }),
+      ),
+    );
+    return decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
+  }
+
+  Future<void> unregisterPushDevice({
+    required String bearerToken,
+    required String platform,
+    required String deviceToken,
+  }) async {
+    await _requestJson(
+      () => _client.post(
+        _u('/devices/unregister'),
+        headers: _authHeaders(bearerToken),
+        body: jsonEncode({
+          'platform': platform,
+          'deviceToken': deviceToken,
+        }),
+      ),
+    );
+  }
+
   Future<Object?> _requestJson(Future<http.Response> Function() request) async {
     try {
       final res = await request();

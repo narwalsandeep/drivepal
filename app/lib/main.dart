@@ -12,6 +12,7 @@ import 'services/auth_session.dart';
 import 'services/customer_tab_refresh_notifier.dart';
 import 'services/driver_tab_refresh_notifier.dart';
 import 'services/payment_methods_store.dart';
+import 'services/push_notification_manager.dart';
 import 'theme/drivepal_theme.dart';
 
 Future<void> main() async {
@@ -38,6 +39,14 @@ Future<void> main() async {
           update: (_, auth, monitor) {
             final resolved = monitor ?? AlertsUnreadMonitor();
             resolved.attachAuthSession(auth);
+            return resolved;
+          },
+        ),
+        ChangeNotifierProxyProvider2<AuthSession, AlertsUnreadMonitor, PushNotificationManager>(
+          create: (_) => PushNotificationManager(),
+          update: (_, auth, alertsMonitor, manager) {
+            final resolved = manager ?? PushNotificationManager();
+            resolved.attach(auth: auth, alertsUnreadMonitor: alertsMonitor);
             return resolved;
           },
         ),

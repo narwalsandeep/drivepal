@@ -2,6 +2,9 @@ const BOOLEAN_ENV_KEYS = [
   'TYPEORM_SYNC',
   'TYPEORM_MIGRATIONS_RUN',
   'CORS_RELAXED',
+  'SECURITY_HEADERS_ENABLED',
+  'PUSH_ENABLED',
+  'PUSH_WEB_ENABLED',
 ];
 const POSITIVE_INTEGER_ENV_KEYS = [
   'PORT',
@@ -46,6 +49,28 @@ export function validateEnvironment(config: Record<string, unknown>) {
     if (raw !== 'true' && raw !== 'false') {
       errors.push(`${key} must be either "true" or "false".`);
     }
+  }
+
+  const pushEnabled = config.PUSH_ENABLED === 'true';
+  const pushWebEnabled = config.PUSH_WEB_ENABLED === 'true';
+  if (pushEnabled) {
+    const requiredPushKeys = [
+      'AWS_REGION',
+      'AWS_ACCESS_KEY_ID',
+      'AWS_SECRET_ACCESS_KEY',
+      'AWS_SNS_PLATFORM_APPLICATION_ARN_ANDROID',
+      'AWS_SNS_PLATFORM_APPLICATION_ARN_IOS',
+    ];
+    for (const key of requiredPushKeys) {
+      if (!hasValue(config[key])) {
+        errors.push(`${key} is required when PUSH_ENABLED=true.`);
+      }
+    }
+  }
+  if (pushWebEnabled && !hasValue(config.FCM_WEB_SERVICE_ACCOUNT_JSON)) {
+    errors.push(
+      'FCM_WEB_SERVICE_ACCOUNT_JSON is required when PUSH_WEB_ENABLED=true.',
+    );
   }
 
   for (const key of POSITIVE_INTEGER_ENV_KEYS) {

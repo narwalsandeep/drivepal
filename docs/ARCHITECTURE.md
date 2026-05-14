@@ -66,6 +66,26 @@ This split keeps the project scalable: product teams tune pricing from env, whil
 - Polling resilience:
   - rider active trip and driver request feed use bounded backoff + stale-data messaging for transient API failures.
 
+## Push notifications architecture
+
+- Token lifecycle:
+  - Flutter app obtains Firebase token (mobile/web) and registers with `POST /api/notifications/devices/register`.
+  - Logout/session drop deactivates via `POST /api/notifications/devices/unregister`.
+- Persistence:
+  - `push_devices` table stores `user_id`, `platform`, token, optional SNS endpoint ARN, active state, and error metadata.
+- Dispatch:
+  - Notification rows remain source-of-truth in `notifications`.
+  - `NotificationsService.createForUser()` writes DB row first, then triggers async push dispatch (non-blocking).
+  - `PushDispatcherService` routes to SNS (android/ios) or FCM HTTP v1 (web).
+- Safety:
+  - Invalid endpoint/token failures auto-mark device inactive.
+  - Polling unread/active-trip flows remain fallback and are not removed.
+- Runtime knobs:
+  - `PUSH_ENABLED`, `PUSH_WEB_ENABLED`
+  - `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`
+  - `AWS_SNS_PLATFORM_APPLICATION_ARN_ANDROID`, `AWS_SNS_PLATFORM_APPLICATION_ARN_IOS`
+  - `FCM_WEB_SERVICE_ACCOUNT_JSON`
+
 ## Builds and CI
 
 - **`npm run build`** in `api/` runs **`npm test`** first (`prebuild`), then `nest build`.

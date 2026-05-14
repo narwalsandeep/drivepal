@@ -1,0 +1,17 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DrivepalSnsPushAccess",
+      "Effect": "Allow",
+      "Action": [
+        "sns:CreatePlatformEndpoint",
+        "sns:SetEndpointAttributes",
+        "sns:GetEndpointAttributes",
+        "sns:DeleteEndpoint",
+        "sns:Publish"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

@@ -36,6 +36,7 @@ npm run build
 - Stripe: `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`
 - Data: `DATABASE_URL`, `TYPEORM_SYNC`, `TYPEORM_MIGRATIONS_RUN`
 - Reliability: `SECURITY_HEADERS_ENABLED`, `API_THROTTLE_TTL_SECONDS`, `API_THROTTLE_LIMIT`
+- Push: `PUSH_ENABLED`, `PUSH_WEB_ENABLED`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SNS_PLATFORM_APPLICATION_ARN_ANDROID`, `AWS_SNS_PLATFORM_APPLICATION_ARN_IOS`, `FCM_WEB_SERVICE_ACCOUNT_JSON`
 
 ## Fare engine
 
@@ -68,6 +69,21 @@ Per-car base distance rates are defined in `src/bookings/constants/car-options.c
 - Security headers: enabled by default via `helmet` (`SECURITY_HEADERS_ENABLED` to disable explicitly).
 - Global throttling: controlled by `API_THROTTLE_TTL_SECONDS` and `API_THROTTLE_LIMIT`.
 - Environment validation: startup fails fast on invalid env formats, missing production-critical secrets, or `TYPEORM_SYNC=true` in production.
+
+## Push notifications
+
+API push flow:
+
+- Device register/upsert: `POST /api/notifications/devices/register`
+- Device deactivate by token: `POST /api/notifications/devices/unregister`
+- Device deactivate by id: `DELETE /api/notifications/devices/:deviceId`
+
+Dispatch behavior:
+
+- Notification DB write happens first.
+- Push send happens asynchronously and does not block booking writes.
+- Mobile routes through SNS endpoint ARNs; web routes through FCM HTTP v1.
+- Invalid token/endpoint errors mark device inactive.
 
 ## Migrations
 
